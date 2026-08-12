@@ -110,7 +110,7 @@ const STATUS_STYLE = {
   Resolved: { bg: "#E7F4EF", fg: "#0E7C66" },
 };
 
-// ---------- persistence (localStorage â works in any browser) ----------
+// ---------- persistence (localStorage -- works in any browser) ----------
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -193,13 +193,13 @@ function TicketCard({ ticket, onClick }) {
       ),
       h("div", { style: { fontWeight: 700, margin: "6px 0 4px", fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, ticket.subject),
       h("div", { style: { fontSize: 13, color: "var(--muted)" } },
-        `${ticket.requester} Â· ${ticket.category} Â· ${ticket.assignee} Â· ${timeAgo(ticket.createdAt)}`
+        `${ticket.requester} | ${ticket.category} | ${ticket.assignee} | ${timeAgo(ticket.createdAt)}`
       )
     )
   );
 }
 
-// ---------- AI assist panel (stubbed â see note below) ----------
+// ---------- AI assist panel (stubbed -- see note below) ----------
 function AiPanel() {
   return h("div", {
     style: {
@@ -209,8 +209,8 @@ function AiPanel() {
   },
     h("div", { style: { fontSize: 13, fontWeight: 700, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" } }, "AI Assist"),
     h("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
-      h("button", { className: "btn", disabled: true, title: "Requires a server-side connection to the Anthropic API" }, "AI Triage â coming soon"),
-      h("button", { className: "btn", disabled: true, title: "Requires an Azure AD app registration with Graph API access" }, "M365 Lookup â coming soon")
+      h("button", { className: "btn", disabled: true, title: "Requires a server-side connection to the Anthropic API" }, "AI Triage -- coming soon"),
+      h("button", { className: "btn", disabled: true, title: "Requires an Azure AD app registration with Graph API access" }, "M365 Lookup -- coming soon")
     )
   );
 }
@@ -231,7 +231,7 @@ function TicketDetail({ ticket, team, onUpdate, onBack, onAddNote }) {
   }
 
   return h("div", null,
-    h("button", { className: "btn", onClick: onBack, style: { marginBottom: 16 } }, "â Back to queue"),
+    h("button", { className: "btn", onClick: onBack, style: { marginBottom: 16 } }, "<- Back to queue"),
 
     h("div", { style: { background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" } },
       h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" } },
@@ -268,7 +268,7 @@ function TicketDetail({ ticket, team, onUpdate, onBack, onAddNote }) {
       ),
 
       h("div", { style: { fontSize: 13, color: "var(--muted)", marginTop: 16 } },
-        `Requested by ${ticket.requester} Â· opened ${timeAgo(ticket.createdAt)}`
+        `Requested by ${ticket.requester} | opened ${timeAgo(ticket.createdAt)}`
       )
     ),
 
@@ -286,7 +286,7 @@ function TicketDetail({ ticket, team, onUpdate, onBack, onAddNote }) {
           ),
       h("div", { style: { display: "flex", gap: 10 } },
         h("input", {
-          value: note, placeholder: "Add a work noteâ¦",
+          value: note, placeholder: "Add a work note...",
           onChange: (e) => setNote(e.target.value),
           onKeyDown: (e) => { if (e.key === "Enter") submitNote(); },
         }),
@@ -355,12 +355,12 @@ function TeamView({ team, onAdd, onRemove, onBack }) {
   }
 
   return h("div", null,
-    h("button", { className: "btn", onClick: onBack, style: { marginBottom: 16 } }, "â Back to queue"),
+    h("button", { className: "btn", onClick: onBack, style: { marginBottom: 16 } }, "<- Back to queue"),
     h("div", { style: { background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" } },
       h("h3", { style: { marginTop: 0 } }, "Team"),
       h("div", { style: { display: "flex", gap: 10, marginBottom: 18 } },
         h("input", {
-          value: name, placeholder: "Engineer nameâ¦",
+          value: name, placeholder: "Engineer name...",
           onChange: (e) => setName(e.target.value),
           onKeyDown: (e) => { if (e.key === "Enter") submit(); },
         }),
