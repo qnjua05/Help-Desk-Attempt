@@ -1,1 +1,476 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Helpdesk</title>
+<style>
+  :root {
+    --bg: #F6F7F9;
+    --panel: #ffffff;
+    --border: #E3E8EC;
+    --text: #1B2430;
+    --muted: #6B7684;
+    --accent: #1F5C8B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+  }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .btn {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { background: #F1F3F5; }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: #184a72; }
+  .btn-danger {
+    background: #fff;
+    border-color: #E3B9B4;
+    color: #C0392B;
+  }
+  .btn-danger:hover { background: #FBEEEC; }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  input, textarea, select {
+    font-family: inherit;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 11px;
+    background: #fff;
+    color: var(--text);
+    width: 100%;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  #root { min-height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+<script>
+const h = React.createElement;
+const { useState, useEffect, useMemo } = React;
+
+// ---------- constants ----------
+const STORAGE_KEY = "helpdesk-data-v1";
+
+const CATEGORIES = ["Hardware", "Software", "Network", "Accounts & Access", "Email / M365", "Printing", "Other"];
+const PRIORITIES = ["Critical", "High", "Medium", "Low"];
+const STATUSES = ["Open", "In Progress", "On Hold", "Resolved"];
+
+const PRIORITY_COLOR = {
+  Critical: "#C0392B",
+  High: "#E67E22",
+  Medium: "#2980B9",
+  Low: "#7F8C8D",
+};
+
+const STATUS_STYLE = {
+  Open: { bg: "#EAF3FB", fg: "#1F5C8B" },
+  "In Progress": { bg: "#FDF3E3", fg: "#9A6008" },
+  "On Hold": { bg: "#F0EDF7", fg: "#5B4A8A" },
+  Resolved: { bg: "#E7F4EF", fg: "#0E7C66" },
+};
+
+// ---------- persistence (localStorage â works in any browser) ----------
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.error("Failed to load helpdesk data", e);
+  }
+  return { tickets: [], team: ["Unassigned"], seq: 1 };
+}
+
+function saveData(data) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.error("Failed to save helpdesk data", e);
+  }
+}
+
+// ---------- helpers ----------
+const ticketKey = (n) => `TKT-${String(n).padStart(4, "0")}`;
+
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const hr = Math.floor(m / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const d = Math.floor(hr / 24);
+  return `${d}d ago`;
+}
+
+function StatusPill({ status }) {
+  const st = STATUS_STYLE[status] || STATUS_STYLE.Open;
+  return h("span", {
+    style: {
+      background: st.bg, color: st.fg, fontSize: 12, fontWeight: 700,
+      padding: "3px 10px", borderRadius: 999, whiteSpace: "nowrap",
+    },
+  }, status);
+}
+
+// ---------- stats strip ----------
+function StatsStrip({ tickets, filter, setFilter }) {
+  return h("div", { style: { display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" } },
+    STATUSES.map((s) => {
+      const count = tickets.filter((t) => t.status === s).length;
+      const active = filter === s;
+      const st = STATUS_STYLE[s];
+      return h("button", {
+        key: s,
+        onClick: () => setFilter(active ? null : s),
+        style: {
+          flex: "1 1 140px", textAlign: "left", border: `1px solid ${active ? st.fg : "var(--border)"}`,
+          background: active ? st.bg : "#fff", borderRadius: 10, padding: "14px 16px",
+        },
+      },
+        h("div", { style: { fontSize: 26, fontWeight: 800, color: st.fg } }, count),
+        h("div", { style: { fontSize: 13, color: "var(--muted)", fontWeight: 600, marginTop: 2 } }, s)
+      );
+    })
+  );
+}
+
+// ---------- ticket card ----------
+function TicketCard({ ticket, onClick }) {
+  return h("div", {
+    onClick, tabIndex: 0, role: "button",
+    onKeyDown: (e) => { if (e.key === "Enter") onClick(); },
+    style: {
+      display: "flex", background: "#fff", border: "1px solid var(--border)", borderRadius: 10,
+      overflow: "hidden", marginBottom: 10, cursor: "pointer",
+    },
+  },
+    h("div", { style: { width: 5, background: PRIORITY_COLOR[ticket.priority] } }),
+    h("div", { style: { padding: "14px 18px", flex: 1, minWidth: 0 } },
+      h("div", { style: { display: "flex", justifyContent: "space-between", gap: 10 } },
+        h("span", { className: "mono", style: { fontSize: 12, color: "var(--muted)", fontWeight: 700 } }, ticket.key),
+        h(StatusPill, { status: ticket.status })
+      ),
+      h("div", { style: { fontWeight: 700, margin: "6px 0 4px", fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, ticket.subject),
+      h("div", { style: { fontSize: 13, color: "var(--muted)" } },
+        `${ticket.requester} Â· ${ticket.category} Â· ${ticket.assignee} Â· ${timeAgo(ticket.createdAt)}`
+      )
+    )
+  );
+}
+
+// ---------- AI assist panel (stubbed â see note below) ----------
+function AiPanel() {
+  return h("div", {
+    style: {
+      background: "#FAFBFC", border: "1px dashed var(--border)", borderRadius: 10,
+      padding: "16px 20px", marginTop: 14,
+    },
+  },
+    h("div", { style: { fontSize: 13, fontWeight: 700, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" } }, "AI Assist"),
+    h("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
+      h("button", { className: "btn", disabled: true, title: "Requires a server-side connection to the Anthropic API" }, "AI Triage â coming soon"),
+      h("button", { className: "btn", disabled: true, title: "Requires an Azure AD app registration with Graph API access" }, "M365 Lookup â coming soon")
+    )
+  );
+}
+
+// ---------- ticket detail ----------
+function TicketDetail({ ticket, team, onUpdate, onBack, onAddNote }) {
+  const [note, setNote] = useState("");
+
+  function set(field, value) {
+    onUpdate({ ...ticket, [field]: value });
+  }
+
+  function submitNote() {
+    const text = note.trim();
+    if (!text) return;
+    onAddNote(ticket.id, text);
+    setNote("");
+  }
+
+  return h("div", null,
+    h("button", { className: "btn", onClick: onBack, style: { marginBottom: 16 } }, "â Back to queue"),
+
+    h("div", { style: { background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" } },
+      h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" } },
+        h("div", null,
+          h("div", { className: "mono", style: { fontSize: 12, color: "var(--muted)", fontWeight: 700 } }, ticket.key),
+          h("h2", { style: { margin: "4px 0 0", fontSize: 20 } }, ticket.subject)
+        ),
+        h(StatusPill, { status: ticket.status })
+      ),
+
+      h("p", { style: { color: "var(--text)", lineHeight: 1.6, marginTop: 14 } }, ticket.description),
+
+      h("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, marginTop: 18 } },
+        h("div", null, h("label", null, "Status"),
+          h("select", { value: ticket.status, onChange: (e) => set("status", e.target.value) },
+            STATUSES.map((s) => h("option", { key: s, value: s }, s))
+          )
+        ),
+        h("div", null, h("label", null, "Priority"),
+          h("select", { value: ticket.priority, onChange: (e) => set("priority", e.target.value) },
+            PRIORITIES.map((p) => h("option", { key: p, value: p }, p))
+          )
+        ),
+        h("div", null, h("label", null, "Category"),
+          h("select", { value: ticket.category, onChange: (e) => set("category", e.target.value) },
+            CATEGORIES.map((c) => h("option", { key: c, value: c }, c))
+          )
+        ),
+        h("div", null, h("label", null, "Assigned to"),
+          h("select", { value: ticket.assignee, onChange: (e) => set("assignee", e.target.value) },
+            team.map((t) => h("option", { key: t, value: t }, t))
+          )
+        )
+      ),
+
+      h("div", { style: { fontSize: 13, color: "var(--muted)", marginTop: 16 } },
+        `Requested by ${ticket.requester} Â· opened ${timeAgo(ticket.createdAt)}`
+      )
+    ),
+
+    h(AiPanel),
+
+    h("div", { style: { background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "18px 22px", marginTop: 14 } },
+      h("div", { style: { fontSize: 13, fontWeight: 700, color: "var(--muted)", marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.04em" } }, "Work notes"),
+      (ticket.notes || []).length === 0
+        ? h("div", { style: { color: "var(--muted)", fontSize: 14 } }, "No notes yet.")
+        : h("div", { style: { display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 } },
+            ticket.notes.map((n, i) => h("div", { key: i, style: { fontSize: 14, borderLeft: "3px solid var(--border)", paddingLeft: 12 } },
+              h("div", { style: { color: "var(--text)" } }, n.text),
+              h("div", { style: { fontSize: 12, color: "var(--muted)", marginTop: 3 } }, timeAgo(n.at))
+            ))
+          ),
+      h("div", { style: { display: "flex", gap: 10 } },
+        h("input", {
+          value: note, placeholder: "Add a work noteâ¦",
+          onChange: (e) => setNote(e.target.value),
+          onKeyDown: (e) => { if (e.key === "Enter") submitNote(); },
+        }),
+        h("button", { className: "btn btn-primary", onClick: submitNote }, "Add")
+      )
+    )
+  );
+}
+
+// ---------- create ticket modal ----------
+function CreateTicketModal({ onClose, onCreate }) {
+  const [subject, setSubject] = useState("");
+  const [description, setDescription] = useState("");
+  const [requester, setRequester] = useState("");
+  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [priority, setPriority] = useState("Medium");
+
+  function submit() {
+    if (!subject.trim() || !requester.trim()) return;
+    onCreate({ subject: subject.trim(), description: description.trim(), requester: requester.trim(), category, priority });
+  }
+
+  return h("div", {
+    style: {
+      position: "fixed", inset: 0, background: "rgba(20,26,33,0.45)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 10,
+    },
+    onClick: onClose,
+  },
+    h("div", {
+      style: { background: "#fff", borderRadius: 12, padding: 26, width: "100%", maxWidth: 480 },
+      onClick: (e) => e.stopPropagation(),
+    },
+      h("h3", { style: { margin: "0 0 18px" } }, "New ticket"),
+      h("div", { style: { marginBottom: 14 } }, h("label", null, "Subject"),
+        h("input", { value: subject, onChange: (e) => setSubject(e.target.value), autoFocus: true })),
+      h("div", { style: { marginBottom: 14 } }, h("label", null, "Description"),
+        h("textarea", { value: description, rows: 4, onChange: (e) => setDescription(e.target.value) })),
+      h("div", { style: { marginBottom: 14 } }, h("label", null, "Requester"),
+        h("input", { value: requester, onChange: (e) => setRequester(e.target.value) })),
+      h("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 } },
+        h("div", null, h("label", null, "Category"),
+          h("select", { value: category, onChange: (e) => setCategory(e.target.value) },
+            CATEGORIES.map((c) => h("option", { key: c, value: c }, c)))),
+        h("div", null, h("label", null, "Priority"),
+          h("select", { value: priority, onChange: (e) => setPriority(e.target.value) },
+            PRIORITIES.map((p) => h("option", { key: p, value: p }, p))))
+      ),
+      h("div", { style: { display: "flex", justifyContent: "flex-end", gap: 10 } },
+        h("button", { className: "btn", onClick: onClose }, "Cancel"),
+        h("button", { className: "btn btn-primary", onClick: submit }, "Create ticket")
+      )
+    )
+  );
+}
+
+// ---------- team view ----------
+function TeamView({ team, onAdd, onRemove, onBack }) {
+  const [name, setName] = useState("");
+
+  function submit() {
+    const n = name.trim();
+    if (!n || team.includes(n)) return;
+    onAdd(n);
+    setName("");
+  }
+
+  return h("div", null,
+    h("button", { className: "btn", onClick: onBack, style: { marginBottom: 16 } }, "â Back to queue"),
+    h("div", { style: { background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "20px 24px" } },
+      h("h3", { style: { marginTop: 0 } }, "Team"),
+      h("div", { style: { display: "flex", gap: 10, marginBottom: 18 } },
+        h("input", {
+          value: name, placeholder: "Engineer nameâ¦",
+          onChange: (e) => setName(e.target.value),
+          onKeyDown: (e) => { if (e.key === "Enter") submit(); },
+        }),
+        h("button", { className: "btn btn-primary", onClick: submit }, "Add")
+      ),
+      h("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
+        team.map((t) => h("div", {
+          key: t,
+          style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", border: "1px solid var(--border)", borderRadius: 8 },
+        },
+          h("span", null, t),
+          t !== "Unassigned"
+            ? h("button", { className: "btn btn-danger", onClick: () => onRemove(t) }, "Remove")
+            : h("span", { style: { fontSize: 12, color: "var(--muted)" } }, "default")
+        ))
+      )
+    )
+  );
+}
+
+// ---------- app ----------
+function App() {
+  const [data, setData] = useState(loadData);
+  const [view, setView] = useState("queue"); // queue | detail | team
+  const [selectedId, setSelectedId] = useState(null);
+  const [filter, setFilter] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+
+  useEffect(() => { saveData(data); }, [data]);
+
+  const tickets = data.tickets;
+  const team = data.team;
+
+  const visibleTickets = useMemo(() => {
+    const list = filter ? tickets.filter((t) => t.status === filter) : tickets;
+    return [...list].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }, [tickets, filter]);
+
+  function createTicket(fields) {
+    const seq = data.seq;
+    const newTicket = {
+      id: `t${seq}`,
+      key: ticketKey(seq),
+      ...fields,
+      status: "Open",
+      assignee: "Unassigned",
+      createdAt: new Date().toISOString(),
+      notes: [],
+    };
+    setData({ ...data, tickets: [newTicket, ...tickets], seq: seq + 1 });
+    setShowCreate(false);
+  }
+
+  function updateTicket(updated) {
+    setData({ ...data, tickets: tickets.map((t) => (t.id === updated.id ? updated : t)) });
+  }
+
+  function addNote(ticketId, text) {
+    setData({
+      ...data,
+      tickets: tickets.map((t) =>
+        t.id === ticketId ? { ...t, notes: [...(t.notes || []), { text, at: new Date().toISOString() }] } : t
+      ),
+    });
+  }
+
+  function addEngineer(name) {
+    setData({ ...data, team: [...team, name] });
+  }
+
+  function removeEngineer(name) {
+    setData({ ...data, team: team.filter((t) => t !== name) });
+    // non-destructive: existing assignments to this engineer are left as-is
+  }
+
+  const selected = tickets.find((t) => t.id === selectedId);
+
+  return h("div", { style: { maxWidth: 900, margin: "0 auto", padding: "28px 20px 60px" } },
+    h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12 } },
+      h("h1", { style: { fontSize: 22, margin: 0 } }, "Helpdesk"),
+      h("div", { style: { display: "flex", gap: 10 } },
+        h("button", { className: "btn", onClick: () => setView("team") }, "Team"),
+        h("button", { className: "btn btn-primary", onClick: () => setShowCreate(true) }, "New ticket")
+      )
+    ),
+
+    view === "team" && h(TeamView, { team, onAdd: addEngineer, onRemove: removeEngineer, onBack: () => setView("queue") }),
+
+    view === "detail" && selected && h(TicketDetail, {
+      ticket: selected, team,
+      onUpdate: updateTicket,
+      onBack: () => setView("queue"),
+      onAddNote: addNote,
+    }),
+
+    view === "queue" && h("div", null,
+      h(StatsStrip, { tickets, filter, setFilter }),
+      visibleTickets.length === 0
+        ? h("div", { style: { textAlign: "center", color: "var(--muted)", padding: "40px 0" } }, "No tickets here. Create one to get started.")
+        : visibleTickets.map((t) => h(TicketCard, {
+            key: t.id, ticket: t,
+            onClick: () => { setSelectedId(t.id); setView("detail"); },
+          }))
+    ),
+
+    showCreate && h(CreateTicketModal, { onClose: () => setShowCreate(false), onCreate: createTicket })
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+</script>
+</body>
+</html>
