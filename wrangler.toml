@@ -1,5 +1,19 @@
-name = "help-desk-attempt"
-   compatibility_date = "2026-08-12"
+# Ticket Desk — Cloudflare Worker + D1 configuration
+# Keep the name matching your existing worker so the URL stays
+# help-desk-attempt.qnjua53.workers.dev
 
-   [assets]
-   directory = "./"
+name = "help-desk-attempt"
+main = "worker.js"
+compatibility_date = "2025-08-01"
+
+# Static frontend (public/index.html)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# D1 database binding.
+# After creating the database (see SETUP.md), paste its ID below.
+[[d1_databases]]
+binding = "DB"
+database_name = "helpdesk"
+database_id = "e1326fb8-089e-4a1e-bdda-1c8602a08a84"
