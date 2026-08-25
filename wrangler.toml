@@ -17,3 +17,5 @@ binding = "ASSETS"
 binding = "DB"
 database_name = "helpdesk"
 database_id = "e1326fb8-089e-4a1e-bdda-1c8602a08a84"
+[vars]
+HELPDESK_MAILBOX = "helpmatt@mesinc.net"
