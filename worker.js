@@ -39,6 +39,7 @@ function rowToTicket(row, notes) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     resolvedAt: row.resolved_at || null,
+    source: row.source || "Manual",
     notes: notes || [],
   };
 }
@@ -62,7 +63,118 @@ async function listTechnicians(env) {
   return (res.results || []).map((r) => r.name);
 }
 
+// ============================================================
+// Email-to-ticket via Cloudflare Email Routing
+//
+// Setup (see EMAIL-SETUP.md): enable Email Routing on your domain,
+// create a custom address (e.g. support@yourdomain.com), and set its
+// action to "Send to a Worker" -> this Worker. No secrets needed.
+//
+// The `email` handler below fires the moment a message arrives.
+// Dedup: the email's Message-ID header is stored in the (reused)
+// graph_message_id column, which has a UNIQUE index.
+// Threading: replies carry In-Reply-To/References headers; we match
+// them against stored message ids to append notes to the original
+// ticket instead of opening a new one.
+// ============================================================
+
+import PostalMime from "postal-mime";
+
+function htmlToText(html) {
+  return (html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function tidy(text) {
+  const t = (text || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+  return t.length > 4000 ? t.slice(0, 4000) + "\n\n[truncated]" : t;
+}
+
+async function handleInboundEmail(message, env) {
+  // Ignore auto-generated mail (bounces, out-of-office) to avoid loops.
+  const autoSubmitted = message.headers.get("auto-submitted");
+  if (autoSubmitted && autoSubmitted.toLowerCase() !== "no") return;
+
+  const parsed = await PostalMime.parse(message.raw);
+
+  const now = new Date().toISOString();
+  const fromAddr = (parsed.from && parsed.from.address) || message.from || "unknown";
+  const fromName = (parsed.from && parsed.from.name) || fromAddr;
+  const subject = (parsed.subject || "(no subject)").slice(0, 300);
+  const bodyText = tidy(parsed.text || htmlToText(parsed.html));
+  const messageId = parsed.messageId || "no-id-" + crypto.randomUUID();
+
+  // Idempotency: skip anything already processed.
+  const seen = await env.DB.prepare(
+    "SELECT 1 FROM email_ingest_log WHERE graph_message_id = ?"
+  ).bind(messageId).first();
+  if (seen) return;
+
+  // Thread detection: References lists ancestor message ids (root first);
+  // In-Reply-To is the immediate parent. The root id doubles as our
+  // conversation id.
+  const refs = Array.isArray(parsed.references)
+    ? parsed.references
+    : parsed.references ? [parsed.references] : [];
+  if (parsed.inReplyTo) refs.push(parsed.inReplyTo);
+  const conversationId = refs.length ? refs[0] : messageId;
+
+  let existing = null;
+  if (refs.length) {
+    const placeholders = refs.map(() => "?").join(",");
+    existing = await env.DB.prepare(
+      "SELECT id, status FROM tickets WHERE conversation_id = ? OR graph_message_id IN (" +
+        placeholders + ") ORDER BY id DESC LIMIT 1"
+    ).bind(conversationId, ...refs).first();
+  }
+
+  if (existing && existing.status !== "Resolved") {
+    // Reply to an open ticket -> append as a work note.
+    const noteText =
+      "Email reply from " + fromName + " <" + fromAddr + ">:\n\n" + (bodyText || "(empty body)");
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO notes (ticket_id, text, at, system) VALUES (?, ?, ?, 0)"
+      ).bind(existing.id, noteText, now),
+      env.DB.prepare("UPDATE tickets SET updated_at = ? WHERE id = ?").bind(now, existing.id),
+      env.DB.prepare(
+        "INSERT INTO email_ingest_log (graph_message_id, ticket_id, action, processed_at) VALUES (?, ?, 'appended', ?)"
+      ).bind(messageId, existing.id, now),
+    ]);
+    return;
+  }
+
+  // New ticket. UNIQUE index on graph_message_id backstops dedup.
+  const res = await env.DB.prepare(
+    "INSERT INTO tickets (subject, description, requester, category, priority, status, assignee, created_at, updated_at, source, graph_message_id, conversation_id) " +
+      "VALUES (?, ?, ?, 'Other', 'Medium', 'Open', 'Unassigned', ?, ?, 'Email', ?, ?)"
+  ).bind(subject, bodyText, fromAddr, now, now, messageId, conversationId).run();
+  const ticketId = res.meta.last_row_id;
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO notes (ticket_id, text, at, system) VALUES (?, ?, ?, 1)"
+    ).bind(ticketId, "Created from email sent by " + fromName + " <" + fromAddr + ">", now),
+    env.DB.prepare(
+      "INSERT INTO email_ingest_log (graph_message_id, ticket_id, action, processed_at) VALUES (?, ?, 'created', ?)"
+    ).bind(messageId, ticketId, now),
+  ]);
+}
+
 export default {
+  async email(message, env, ctx) {
+    ctx.waitUntil(handleInboundEmail(message, env));
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
