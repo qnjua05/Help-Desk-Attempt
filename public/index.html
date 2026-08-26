@@ -10,11 +10,130 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Ticket Desk — Internal Helpdesk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
-  body { margin: 0; }
-  button { font-family: inherit; }
-  input, select, textarea { font-family: inherit; }
+  :root {
+    --ink: #0E1C2E;          /* console ink — header stays fixed in both themes */
+    --dispatch: #0E7C66;     /* action green */
+    --alarm: #C0392B;
+
+    --paper: #EEF2F5;
+    --grid-line: rgba(14, 28, 46, 0.04);
+    --card: #FFFFFF;
+    --well: #F4F6F8;
+    --track: #F0F3F5;
+    --card-border: #D9E1E8;
+    --border-soft: #EEF1F3;
+    --input-border: #CBD4DA;
+    --text: #16212B;
+    --text-soft: #3D4852;
+    --text-mut: #5B6770;
+    --text-faint: #8593A0;
+    --ink-btn: #16212B;
+    --placeholder: #93A1AD;
+    --shadow: rgba(14, 28, 46, 0.10);
+    --hazard-alt: #F6D5D0;
+    --alarm-bg: #FDEBE8;
+    --alarm-fg: #8C2B1D;
+    --alarm-fg-btn: #8C2B1D;
+    --alarm-strong: #C0392B;
+    --st-open-bg: #EAF3FB;  --st-open-fg: #1F5C8B;
+    --st-prog-bg: #FDF3E3;  --st-prog-fg: #9A6008;
+    --st-hold-bg: #F0EDF7;  --st-hold-fg: #5B4A8A;
+    --st-res-bg: #E7F4EF;   --st-res-fg: #0E7C66;
+  }
+  [data-theme="dark"] {
+    --paper: #0D141D;
+    --grid-line: rgba(255, 255, 255, 0.035);
+    --card: #17222E;
+    --well: #101923;
+    --track: #223140;
+    --card-border: #27384A;
+    --border-soft: #1F2C3A;
+    --input-border: #35485E;
+    --text: #E6ECF2;
+    --text-soft: #C0CBD6;
+    --text-mut: #94A4B2;
+    --text-faint: #6E7F8D;
+    --ink-btn: #3A4C61;
+    --placeholder: #5C6E7E;
+    --shadow: rgba(0, 0, 0, 0.45);
+    --hazard-alt: #4A2620;
+    --alarm-bg: #3A1F1B;
+    --alarm-fg: #F0A296;
+    --alarm-fg-btn: #A03A2A;
+    --alarm-strong: #E4695A;
+    --st-open-bg: #14324A;  --st-open-fg: #7FB8E8;
+    --st-prog-bg: #3A2E12;  --st-prog-fg: #E0B25E;
+    --st-hold-bg: #2A2440;  --st-hold-fg: #B3A4E0;
+    --st-res-bg: #123329;   --st-res-fg: #5CC7A8;
+  }
+  body {
+    margin: 0;
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  button { font-family: inherit; transition: filter .15s ease, transform .15s ease, box-shadow .15s ease; }
+  button:not(:disabled):hover { filter: brightness(1.07); }
+  input, select, textarea { font-family: inherit; transition: border-color .15s ease, box-shadow .15s ease; }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--dispatch) !important;
+    box-shadow: 0 0 0 3px rgba(14, 124, 102, 0.14);
+  }
+  :focus-visible { outline: 2px solid var(--dispatch); outline-offset: 2px; }
+  ::placeholder { color: var(--placeholder); }
+
+  /* ticket cards in the queue */
+  .tkt-card { transition: transform .15s ease, box-shadow .15s ease, filter .15s ease; }
+  .tkt-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px var(--shadow);
+    filter: none;
+  }
+
+  /* signature: hazard-stripe rail on overdue tickets */
+  .hazard {
+    border-left-color: transparent !important;
+    background-image:
+      linear-gradient(var(--card), var(--card)),
+      repeating-linear-gradient(45deg, var(--alarm-strong) 0 6px, var(--hazard-alt) 6px 12px);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+    animation: hazard-crawl 1.6s linear infinite;
+  }
+  @keyframes hazard-crawl {
+    to { background-position: 0 0, 0 17px; }
+  }
+
+  /* live refresh indicator in the header */
+  .livedot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #2EBD85; display: inline-block;
+    box-shadow: 0 0 0 0 rgba(46, 189, 133, 0.55);
+    animation: live-pulse 2.4s ease-out infinite;
+  }
+  @keyframes live-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(46, 189, 133, 0.55); }
+    70% { box-shadow: 0 0 0 7px rgba(46, 189, 133, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(46, 189, 133, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hazard, .livedot { animation: none; }
+    .tkt-card, button, input, select, textarea { transition: none; }
+    .tkt-card:hover { transform: none; }
+  }
 </style>
+<script>
+  document.documentElement.dataset.theme =
+    localStorage.getItem("td-theme") ||
+    (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -39,14 +158,14 @@ const PRIORITY_COLOR = {
 };
 
 const STATUS_STYLE = {
-  Open: { bg: "#EAF3FB", fg: "#1F5C8B" },
-  "In Progress": { bg: "#FDF3E3", fg: "#9A6008" },
-  "On Hold": { bg: "#F0EDF7", fg: "#5B4A8A" },
-  Resolved: { bg: "#E7F4EF", fg: "#0E7C66" },
+  Open: { bg: "var(--st-open-bg)", fg: "var(--st-open-fg)" },
+  "In Progress": { bg: "var(--st-prog-bg)", fg: "var(--st-prog-fg)" },
+  "On Hold": { bg: "var(--st-hold-bg)", fg: "var(--st-hold-fg)" },
+  Resolved: { bg: "var(--st-res-bg)", fg: "var(--st-res-fg)" },
 };
 
-const mono = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-const sans = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const mono = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+const sans = "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
 // ---------- API layer ----------
 async function api(path, options) {
@@ -110,7 +229,7 @@ function StatusPill({ status }) {
 
 function PriorityDot({ priority }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#3D4852" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-soft)" }}>
       <span style={{
         width: 8, height: 8, borderRadius: 2, background: PRIORITY_COLOR[priority],
         display: "inline-block",
@@ -124,7 +243,7 @@ function Field({ label, children }) {
   return (
     <label style={{ display: "block", marginBottom: 14 }}>
       <div style={{
-        fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "#5B6770",
+        fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "var(--text-mut)",
         marginBottom: 5, textTransform: "uppercase",
       }}>{label}</div>
       {children}
@@ -134,8 +253,8 @@ function Field({ label, children }) {
 
 const inputStyle = {
   width: "100%", boxSizing: "border-box", padding: "9px 11px",
-  border: "1px solid #CBD4DA", borderRadius: 6, fontSize: 14,
-  fontFamily: sans, background: "#fff", color: "#16212B", outline: "none",
+  border: "1px solid var(--input-border)", borderRadius: 6, fontSize: 14,
+  fontFamily: sans, background: "var(--card)", color: "var(--text)", outline: "none",
 };
 
 // ---------- main app ----------
@@ -151,6 +270,13 @@ function HelpdeskApp() {
   const [statusFilter, setStatusFilter] = useState("Active");
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [search, setSearch] = useState("");
+
+  const [darkMode, setDarkMode] = useState(() => document.documentElement.dataset.theme === "dark");
+  useEffect(() => {
+    const theme = darkMode ? "dark" : "light";
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("td-theme", theme);
+  }, [darkMode]);
 
   async function loadState(silent) {
     if (!silent) setLoading(true);
@@ -268,21 +394,28 @@ function HelpdeskApp() {
   const selected = tickets.find((t) => t.id === selectedId);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F6F8F9", fontFamily: sans, color: "#16212B" }}>
+    <div style={{ minHeight: "100vh", background: "transparent", fontFamily: sans, color: "var(--text)" }}>
       {/* header */}
       <header style={{
-        background: "#16212B", color: "#F6F8F9", padding: "14px 22px",
+        background: "#0E1C2E", color: "#F6F8F9", padding: "14px 22px",
+        borderBottom: "3px solid #0E7C66",
         display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
       }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <span style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>
+          <span style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>
             TICKET&nbsp;DESK
           </span>
-          <span style={{ fontFamily: mono, fontSize: 11, color: "#8FA3B0" }}>
-            shared helpdesk
+          <span style={{ fontFamily: mono, fontSize: 11, color: "#8FA3B0", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span className="livedot" />live queue
           </span>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? "Switch to light mode" : "Switch to dark mode"} style={{
+            background: "transparent", color: "#F6F8F9", border: "1px solid #3D4C59",
+            borderRadius: 6, padding: "7px 12px", fontSize: 13, cursor: "pointer",
+          }}>
+            {darkMode ? "☀" : "☾"}
+          </button>
           <button onClick={() => loadState(true)} title="Refresh" style={{
             background: "transparent", color: "#F6F8F9", border: "1px solid #3D4C59",
             borderRadius: 6, padding: "7px 12px", fontSize: 13, cursor: "pointer",
@@ -324,7 +457,7 @@ function HelpdeskApp() {
 
       {/* queue strip */}
       <div style={{
-        display: "flex", gap: 0, borderBottom: "1px solid #DDE3E8", background: "#fff",
+        display: "flex", gap: 0, borderBottom: "1px solid var(--card-border)", background: "var(--card)",
         overflowX: "auto",
       }}>
         {STATUSES.map((s) => (
@@ -333,13 +466,13 @@ function HelpdeskApp() {
             onClick={() => { setStatusFilter(s === statusFilter ? "Active" : s); setView("list"); }}
             style={{
               flex: 1, minWidth: 110, padding: "12px 16px", background: statusFilter === s ? STATUS_STYLE[s].bg : "transparent",
-              border: "none", borderRight: "1px solid #EEF1F3", cursor: "pointer", textAlign: "left",
+              border: "none", borderRight: "1px solid var(--border-soft)", cursor: "pointer", textAlign: "left",
             }}
           >
             <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: STATUS_STYLE[s].fg }}>
               {counts[s]}
             </div>
-            <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "#5B6770", textTransform: "uppercase" }}>
+            <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "var(--text-mut)", textTransform: "uppercase" }}>
               {s}
             </div>
           </button>
@@ -348,14 +481,14 @@ function HelpdeskApp() {
           onClick={() => { setStatusFilter(statusFilter === "Overdue" ? "Active" : "Overdue"); setView("list"); }}
           style={{
             flex: 1, minWidth: 110, padding: "12px 16px",
-            background: statusFilter === "Overdue" ? "#FDEBE8" : "transparent",
+            background: statusFilter === "Overdue" ? "var(--alarm-bg)" : "transparent",
             border: "none", cursor: "pointer", textAlign: "left",
           }}
         >
-          <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: "#C0392B" }}>
+          <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: "var(--alarm-strong)" }}>
             {overdueCount}
           </div>
-          <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "#5B6770", textTransform: "uppercase" }}>
+          <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "var(--text-mut)", textTransform: "uppercase" }}>
             Overdue
           </div>
         </button>
@@ -363,12 +496,12 @@ function HelpdeskApp() {
 
       {apiError && (
         <div style={{
-          background: "#FDEBE8", color: "#8C2B1D", padding: "8px 22px", fontSize: 13,
+          background: "var(--alarm-bg)", color: "var(--alarm-fg)", padding: "8px 22px", fontSize: 13,
           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap",
         }}>
           <span>{apiError}</span>
           <button onClick={() => loadState()} style={{
-            background: "#8C2B1D", color: "#fff", border: "none", borderRadius: 6,
+            background: "var(--alarm-fg-btn)", color: "#fff", border: "none", borderRadius: 6,
             padding: "6px 12px", fontSize: 12, cursor: "pointer",
           }}>
             Retry
@@ -378,7 +511,7 @@ function HelpdeskApp() {
 
       <main style={{ maxWidth: 860, margin: "0 auto", padding: "20px 16px 60px" }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "#5B6770", fontFamily: mono, fontSize: 13 }}>
+          <div style={{ padding: 40, textAlign: "center", color: "var(--text-mut)", fontFamily: mono, fontSize: 13 }}>
             Loading tickets…
           </div>
         ) : view === "new" ? (
@@ -443,13 +576,13 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
 
       {total === 0 ? (
         <div style={{
-          background: "#fff", border: "1px dashed #CBD4DA", borderRadius: 10,
+          background: "var(--card)", border: "1px dashed var(--input-border)", borderRadius: 10,
           padding: "48px 20px", textAlign: "center",
         }}>
-          <div style={{ fontFamily: mono, fontSize: 14, color: "#3D4852", marginBottom: 8 }}>
+          <div style={{ fontFamily: mono, fontSize: 14, color: "var(--text-soft)", marginBottom: 8 }}>
             No tickets yet
           </div>
-          <div style={{ fontSize: 13, color: "#5B6770", marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: "var(--text-mut)", marginBottom: 16 }}>
             Log the first issue to start the queue.
           </div>
           <button onClick={onNew} style={{
@@ -460,7 +593,7 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
           </button>
         </div>
       ) : tickets.length === 0 ? (
-        <div style={{ padding: 30, textAlign: "center", color: "#5B6770", fontSize: 13 }}>
+        <div style={{ padding: 30, textAlign: "center", color: "var(--text-mut)", fontSize: 13 }}>
           No tickets match these filters.
         </div>
       ) : (
@@ -468,23 +601,24 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
           <button
             key={t.id}
             onClick={() => onOpen(t.id)}
+            className={"tkt-card" + (isOverdue(t) ? " hazard" : "")}
             style={{
               display: "block", width: "100%", textAlign: "left", cursor: "pointer",
-              background: "#fff", border: "1px solid #E3E8EC", borderRadius: 8,
+              background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 8,
               borderLeft: "4px solid " + PRIORITY_COLOR[t.priority],
               padding: "12px 14px", marginBottom: 8, fontFamily: sans,
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                <span style={{ fontFamily: mono, fontSize: 12, color: "#5B6770" }}>{t.key}</span>
-                <span style={{ fontSize: 14, fontWeight: 600, color: "#16212B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 380 }}>
+                <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-mut)" }}>{t.key}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 380 }}>
                   {t.subject}
                 </span>
               </div>
               <StatusPill status={t.status} />
             </div>
-            <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap", fontSize: 12, color: "#5B6770", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text-mut)", alignItems: "center" }}>
               <PriorityDot priority={t.priority} />
               <span>{t.category}</span>
               <span>from {t.requester || "—"}</span>
@@ -492,7 +626,7 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
               {dueLabel(t) && (
                 <span style={{
                   fontFamily: mono, fontSize: 11,
-                  color: isOverdue(t) ? "#C0392B" : "#5B6770",
+                  color: isOverdue(t) ? "var(--alarm-strong)" : "var(--text-mut)",
                   fontWeight: isOverdue(t) ? 700 : 400,
                 }}>
                   {dueLabel(t)}
@@ -517,20 +651,20 @@ function NewTicketForm({ onCreate, onCancel }) {
   const valid = form.subject.trim().length > 0;
 
   return (
-    <div style={{ background: "#fff", border: "1px solid #E3E8EC", borderRadius: 10, padding: "22px 22px 16px", maxWidth: 620, margin: "0 auto" }}>
-      <div style={{ fontFamily: mono, fontSize: 13, letterSpacing: 1, color: "#16212B", fontWeight: 700, marginBottom: 18 }}>
+    <div style={{ background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10, padding: "22px 22px 16px", maxWidth: 620, margin: "0 auto" }}>
+      <div style={{ fontFamily: mono, fontSize: 13, letterSpacing: 1, color: "var(--text)", fontWeight: 700, marginBottom: 18 }}>
         NEW TICKET
       </div>
 
       <Field label="Subject *">
         <input
-          style={{ ...inputStyle, borderColor: touched && !valid ? "#C0392B" : "#CBD4DA" }}
+          style={{ ...inputStyle, borderColor: touched && !valid ? "#C0392B" : "var(--input-border)" }}
           value={form.subject}
           onChange={(e) => setForm({ ...form, subject: e.target.value })}
           placeholder="Short summary of the issue"
         />
         {touched && !valid && (
-          <div style={{ fontSize: 12, color: "#C0392B", marginTop: 4 }}>Subject is required.</div>
+          <div style={{ fontSize: 12, color: "var(--alarm-strong)", marginTop: 4 }}>Subject is required.</div>
         )}
       </Field>
 
@@ -571,7 +705,7 @@ function NewTicketForm({ onCreate, onCancel }) {
 
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
         <button onClick={onCancel} style={{
-          background: "#fff", color: "#3D4852", border: "1px solid #CBD4DA",
+          background: "var(--card)", color: "var(--text-soft)", border: "1px solid var(--input-border)",
           borderRadius: 6, padding: "9px 16px", fontSize: 13, cursor: "pointer",
         }}>
           Cancel
@@ -605,25 +739,25 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
   return (
     <div style={{ maxWidth: 720, margin: "0 auto" }}>
       <div style={{
-        background: "#fff", border: "1px solid #E3E8EC", borderRadius: 10,
+        background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10,
         borderLeft: "5px solid " + PRIORITY_COLOR[ticket.priority],
         padding: "20px 22px",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
-          <span style={{ fontFamily: mono, fontSize: 13, color: "#5B6770" }}>{ticket.key}</span>
+          <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-mut)" }}>{ticket.key}</span>
           <StatusPill status={ticket.status} />
         </div>
         <h2 style={{ margin: "0 0 10px", fontSize: 19, fontWeight: 700 }}>{ticket.subject}</h2>
 
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "#3D4852", marginBottom: 14 }}>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--text-soft)", marginBottom: 14 }}>
           <PriorityDot priority={ticket.priority} />
           <span>{ticket.category}</span>
           <span>Requester: <strong>{ticket.requester || "—"}</strong></span>
-          <span style={{ fontFamily: mono, fontSize: 12, color: "#5B6770" }}>opened {fmtDate(ticket.createdAt)}</span>
+          <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-mut)" }}>opened {fmtDate(ticket.createdAt)}</span>
           {dueLabel(ticket) && (
             <span style={{
               fontFamily: mono, fontSize: 12,
-              color: isOverdue(ticket) ? "#C0392B" : "#5B6770",
+              color: isOverdue(ticket) ? "var(--alarm-strong)" : "var(--text-mut)",
               fontWeight: isOverdue(ticket) ? 700 : 400,
             }}>
               {dueLabel(ticket)} · SLA {SLA_HOURS[ticket.priority]}h
@@ -633,7 +767,7 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
 
         {ticket.description && (
           <p style={{
-            fontSize: 14, lineHeight: 1.55, color: "#16212B", background: "#F6F8F9",
+            fontSize: 14, lineHeight: 1.55, color: "var(--text)", background: "var(--well)",
             padding: "12px 14px", borderRadius: 8, whiteSpace: "pre-wrap", margin: "0 0 16px",
           }}>
             {ticket.description}
@@ -679,7 +813,7 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
           <button
             onClick={() => onUpdate(ticket.id, { status: "Open" })}
             style={{
-              background: "#fff", color: "#0E7C66", border: "1px solid #0E7C66", borderRadius: 6,
+              background: "var(--card)", color: "#0E7C66", border: "1px solid #0E7C66", borderRadius: 6,
               padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
             }}
           >
@@ -692,26 +826,26 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
       <AiPanel ticket={ticket} onUpdate={onUpdate} />
 
       {/* work notes */}
-      <div style={{ background: "#fff", border: "1px solid #E3E8EC", borderRadius: 10, padding: "18px 22px", marginTop: 14 }}>
-        <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "#5B6770", textTransform: "uppercase", marginBottom: 12 }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10, padding: "18px 22px", marginTop: 14 }}>
+        <div style={{ fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "var(--text-mut)", textTransform: "uppercase", marginBottom: 12 }}>
           Work notes ({ticket.notes.length})
         </div>
 
         {ticket.notes.length === 0 && (
-          <div style={{ fontSize: 13, color: "#8593A0", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, color: "var(--text-faint)", marginBottom: 12 }}>
             No notes yet. Add the first update below.
           </div>
         )}
 
         {ticket.notes.map((n, i) => (
-          <div key={i} style={{ borderLeft: n.system ? "2px dashed #C3CCD3" : "2px solid #DDE3E8", padding: "4px 0 4px 12px", marginBottom: 10 }}>
+          <div key={i} style={{ borderLeft: n.system ? "2px dashed var(--border-soft)" : "2px solid var(--card-border)", padding: "4px 0 4px 12px", marginBottom: 10 }}>
             <div style={{
               fontSize: n.system ? 12.5 : 13.5,
-              color: n.system ? "#5B6770" : "#16212B",
+              color: n.system ? "var(--text-mut)" : "var(--text)",
               fontStyle: n.system ? "italic" : "normal",
               whiteSpace: "pre-wrap",
             }}>{n.text}</div>
-            <div style={{ fontFamily: mono, fontSize: 11, color: "#8593A0", marginTop: 3 }}>{fmtDate(n.at)}{n.system ? " · auto" : ""}</div>
+            <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-faint)", marginTop: 3 }}>{fmtDate(n.at)}{n.system ? " · auto" : ""}</div>
           </div>
         ))}
 
@@ -724,7 +858,7 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
             onKeyDown={(e) => { if (e.key === "Enter") addNote(); }}
           />
           <button onClick={addNote} style={{
-            background: "#16212B", color: "#fff", border: "none", borderRadius: 6,
+            background: "var(--ink-btn)", color: "#fff", border: "none", borderRadius: 6,
             padding: "9px 16px", fontSize: 13, cursor: "pointer",
           }}>
             Add note
@@ -740,12 +874,12 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
             <button onClick={() => onDelete(ticket.id)} style={{ background: "#C0392B", color: "#fff", border: "none", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer", marginLeft: 6 }}>
               Delete
             </button>
-            <button onClick={() => setConfirmDelete(false)} style={{ background: "#fff", color: "#3D4852", border: "1px solid #CBD4DA", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer", marginLeft: 6 }}>
+            <button onClick={() => setConfirmDelete(false)} style={{ background: "var(--card)", color: "var(--text-soft)", border: "1px solid var(--input-border)", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer", marginLeft: 6 }}>
               Keep
             </button>
           </span>
         ) : (
-          <button onClick={() => setConfirmDelete(true)} style={{ background: "transparent", color: "#8593A0", border: "none", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
+          <button onClick={() => setConfirmDelete(true)} style={{ background: "transparent", color: "var(--text-faint)", border: "none", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
             Delete ticket
           </button>
         )}
@@ -783,7 +917,7 @@ function AiPanel({ ticket, onUpdate }) {
   }
 
   const aiBtn = (loading) => ({
-    background: loading ? "#8FA3B0" : "#16212B",
+    background: loading ? "var(--text-faint)" : "var(--ink-btn)",
     color: "#fff",
     border: "none",
     borderRadius: 6,
@@ -794,7 +928,7 @@ function AiPanel({ ticket, onUpdate }) {
   });
 
   const smallBtn = {
-    background: "#fff",
+    background: "var(--card)",
     color: "#0E7C66",
     border: "1px solid #0E7C66",
     borderRadius: 6,
@@ -806,11 +940,11 @@ function AiPanel({ ticket, onUpdate }) {
 
   return (
     <div style={{
-      background: "#fff", border: "1px solid #E3E8EC", borderRadius: 10,
+      background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10,
       padding: "18px 22px", marginTop: 14,
     }}>
       <div style={{
-        fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "#5B6770",
+        fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "var(--text-mut)",
         textTransform: "uppercase", marginBottom: 12,
       }}>
         AI assist
@@ -821,7 +955,7 @@ function AiPanel({ ticket, onUpdate }) {
           {triageLoading ? "Analyzing…" : "AI triage"}
         </button>
         <button disabled style={{
-          background: "#EDF1F4", color: "#8593A0", border: "1px dashed #C3CCD3",
+          background: "var(--well)", color: "var(--text-faint)", border: "1px dashed var(--border-soft)",
           borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "default",
         }}>
           M365 lookup — coming soon
@@ -833,7 +967,7 @@ function AiPanel({ ticket, onUpdate }) {
       )}
 
       {triage && (
-        <div style={{ marginTop: 14, background: "#F6F8F9", borderRadius: 8, padding: "12px 14px" }}>
+        <div style={{ marginTop: 14, background: "var(--well)", borderRadius: 8, padding: "12px 14px" }}>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontSize: 13 }}>
               Suggested category: <strong>{triage.category}</strong>{" "}
@@ -859,12 +993,12 @@ function AiPanel({ ticket, onUpdate }) {
             </span>
           </div>
           {triage.reasoning && (
-            <div style={{ fontSize: 12.5, color: "#5B6770", marginBottom: 10 }}>{triage.reasoning}</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-mut)", marginBottom: 10 }}>{triage.reasoning}</div>
           )}
           {triage.firstResponse && (
             <div>
               <div style={{
-                fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "#5B6770",
+                fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "var(--text-mut)",
                 textTransform: "uppercase", marginBottom: 4,
               }}>
                 Draft first response
@@ -902,19 +1036,19 @@ function TeamView({ technicians, tickets, onAdd, onRemove }) {
 
   return (
     <div style={{ maxWidth: 560, margin: "0 auto" }}>
-      <div style={{ background: "#fff", border: "1px solid #E3E8EC", borderRadius: 10, padding: "20px 22px" }}>
+      <div style={{ background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10, padding: "20px 22px" }}>
         <div style={{
-          fontFamily: mono, fontSize: 13, letterSpacing: 1, color: "#16212B",
+          fontFamily: mono, fontSize: 13, letterSpacing: 1, color: "var(--text)",
           fontWeight: 700, marginBottom: 4,
         }}>
           TEAM
         </div>
-        <div style={{ fontSize: 13, color: "#5B6770", marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: "var(--text-mut)", marginBottom: 16 }}>
           Engineers listed here appear in the "Assigned to" dropdown on every ticket. Changes apply for everyone.
         </div>
 
         {technicians.length === 0 && (
-          <div style={{ fontSize: 13, color: "#8593A0", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, color: "var(--text-faint)", marginBottom: 12 }}>
             No engineers yet — add the first one below.
           </div>
         )}
@@ -924,12 +1058,12 @@ function TeamView({ technicians, tickets, onAdd, onRemove }) {
             key={tech}
             style={{
               display: "flex", alignItems: "center", gap: 10,
-              padding: "10px 12px", border: "1px solid #EEF1F3", borderRadius: 8,
-              marginBottom: 8, background: "#FBFCFD",
+              padding: "10px 12px", border: "1px solid var(--border-soft)", borderRadius: 8,
+              marginBottom: 8, background: "var(--well)",
             }}
           >
             <span style={{
-              width: 30, height: 30, borderRadius: "50%", background: "#16212B",
+              width: 30, height: 30, borderRadius: "50%", background: "var(--ink-btn)",
               color: "#fff", display: "inline-flex", alignItems: "center",
               justifyContent: "center", fontFamily: mono, fontSize: 12, fontWeight: 700,
               flexShrink: 0,
@@ -937,14 +1071,14 @@ function TeamView({ technicians, tickets, onAdd, onRemove }) {
               {tech.slice(0, 2).toUpperCase()}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#16212B" }}>{tech}</div>
-              <div style={{ fontFamily: mono, fontSize: 11, color: "#5B6770" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{tech}</div>
+              <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-mut)" }}>
                 {openCount(tech)} active ticket{openCount(tech) === 1 ? "" : "s"}
               </div>
             </div>
             {pendingRemove === tech ? (
               <span style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                {openCount(tech) > 0 && <span style={{ color: "#9A6008" }}>Has active tickets.</span>}
+                {openCount(tech) > 0 && <span style={{ color: "var(--st-prog-fg)" }}>Has active tickets.</span>}
                 <button
                   onClick={() => { onRemove(tech); setPendingRemove(null); }}
                   style={{ background: "#C0392B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}
@@ -953,7 +1087,7 @@ function TeamView({ technicians, tickets, onAdd, onRemove }) {
                 </button>
                 <button
                   onClick={() => setPendingRemove(null)}
-                  style={{ background: "#fff", color: "#3D4852", border: "1px solid #CBD4DA", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}
+                  style={{ background: "var(--card)", color: "var(--text-soft)", border: "1px solid var(--input-border)", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}
                 >
                   Keep
                 </button>
@@ -961,7 +1095,7 @@ function TeamView({ technicians, tickets, onAdd, onRemove }) {
             ) : (
               <button
                 onClick={() => setPendingRemove(tech)}
-                style={{ background: "transparent", color: "#8593A0", border: "none", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}
+                style={{ background: "transparent", color: "var(--text-faint)", border: "none", fontSize: 12, cursor: "pointer", textDecoration: "underline" }}
               >
                 Remove
               </button>
@@ -988,7 +1122,7 @@ function TeamView({ technicians, tickets, onAdd, onRemove }) {
           </button>
         </div>
 
-        <div style={{ fontSize: 12, color: "#8593A0", marginTop: 12 }}>
+        <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 12 }}>
           Removing an engineer doesn't touch their existing tickets — those keep the name until you reassign them.
         </div>
       </div>
@@ -1088,9 +1222,9 @@ function ReportsView({ tickets, technicians }) {
     URL.revokeObjectURL(url);
   }
 
-  const card = { background: "#fff", border: "1px solid #E3E8EC", borderRadius: 10, padding: "18px 22px", marginBottom: 14 };
+  const card = { background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10, padding: "18px 22px", marginBottom: 14 };
   const sectionLabel = {
-    fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "#5B6770",
+    fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "var(--text-mut)",
     textTransform: "uppercase", marginBottom: 12,
   };
 
@@ -1098,11 +1232,11 @@ function ReportsView({ tickets, technicians }) {
     const pct = max ? Math.max(4, Math.round((count / max) * 100)) : 0;
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
-        <span style={{ width: 130, fontSize: 12.5, color: "#3D4852", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-        <div style={{ flex: 1, background: "#F0F3F5", borderRadius: 4, height: 14 }}>
+        <span style={{ width: 130, fontSize: 12.5, color: "var(--text-soft)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+        <div style={{ flex: 1, background: "var(--track)", borderRadius: 4, height: 14 }}>
           <div style={{ width: pct + "%", height: "100%", background: color, borderRadius: 4 }} />
         </div>
-        <span style={{ fontFamily: mono, fontSize: 12, color: "#16212B", width: 28, textAlign: "right" }}>{count}</span>
+        <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text)", width: 28, textAlign: "right" }}>{count}</span>
       </div>
     );
   }
@@ -1110,8 +1244,8 @@ function ReportsView({ tickets, technicians }) {
   if (tickets.length === 0) {
     return (
       <div style={{ ...card, textAlign: "center", padding: "48px 20px" }}>
-        <div style={{ fontFamily: mono, fontSize: 14, color: "#3D4852", marginBottom: 8 }}>No data to report yet</div>
-        <div style={{ fontSize: 13, color: "#5B6770" }}>Reports will populate as tickets are logged and resolved.</div>
+        <div style={{ fontFamily: mono, fontSize: 14, color: "var(--text-soft)", marginBottom: 8 }}>No data to report yet</div>
+        <div style={{ fontSize: 13, color: "var(--text-mut)" }}>Reports will populate as tickets are logged and resolved.</div>
       </div>
     );
   }
@@ -1122,10 +1256,10 @@ function ReportsView({ tickets, technicians }) {
   const maxTech = Math.max(...Object.values(stats.byTech).map((v) => v.active + v.resolved));
 
   const kpi = (label, value, sub) => (
-    <div key={label} style={{ flex: 1, minWidth: 120, background: "#fff", border: "1px solid #E3E8EC", borderRadius: 10, padding: "14px 16px" }}>
-      <div style={{ fontFamily: mono, fontSize: 24, fontWeight: 700, color: "#16212B" }}>{value}</div>
-      <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "#5B6770", textTransform: "uppercase", marginTop: 2 }}>{label}</div>
-      {sub && <div style={{ fontSize: 11.5, color: "#8593A0", marginTop: 4 }}>{sub}</div>}
+    <div key={label} style={{ flex: 1, minWidth: 120, background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ fontFamily: mono, fontSize: 24, fontWeight: 700, color: "var(--text)" }}>{value}</div>
+      <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "var(--text-mut)", textTransform: "uppercase", marginTop: 2 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 4 }}>{sub}</div>}
     </div>
   );
 
@@ -1134,7 +1268,7 @@ function ReportsView({ tickets, technicians }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontFamily: mono, fontSize: 13, letterSpacing: 1, fontWeight: 700 }}>REPORTS</span>
         <button onClick={exportCsv} style={{
-          background: "#16212B", color: "#fff", border: "none", borderRadius: 6,
+          background: "var(--ink-btn)", color: "#fff", border: "none", borderRadius: 6,
           padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer",
         }}>
           Export CSV
@@ -1155,18 +1289,18 @@ function ReportsView({ tickets, technicians }) {
         <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 90 }}>
           {stats.days.map((d, i) => (
             <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <span style={{ fontFamily: mono, fontSize: 10, color: d.count ? "#3D4852" : "#C3CCD3" }}>{d.count || ""}</span>
+              <span style={{ fontFamily: mono, fontSize: 10, color: d.count ? "var(--text-soft)" : "var(--border-soft)" }}>{d.count || ""}</span>
               <div style={{
                 width: "100%", maxWidth: 26, borderRadius: "3px 3px 0 0",
                 height: Math.max(3, Math.round((d.count / maxDay) * 60)),
-                background: d.count ? "#0E7C66" : "#E8EDF0",
+                background: d.count ? "#0E7C66" : "var(--track)",
               }} />
             </div>
           ))}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-          <span style={{ fontFamily: mono, fontSize: 10, color: "#8593A0" }}>{stats.days[0].label}</span>
-          <span style={{ fontFamily: mono, fontSize: 10, color: "#8593A0" }}>{stats.days[13].label}</span>
+          <span style={{ fontFamily: mono, fontSize: 10, color: "var(--text-faint)" }}>{stats.days[0].label}</span>
+          <span style={{ fontFamily: mono, fontSize: 10, color: "var(--text-faint)" }}>{stats.days[13].label}</span>
         </div>
       </div>
 
@@ -1189,17 +1323,17 @@ function ReportsView({ tickets, technicians }) {
         <div style={sectionLabel}>Workload by engineer</div>
         {Object.entries(stats.byTech).sort((a, b) => (b[1].active + b[1].resolved) - (a[1].active + a[1].resolved)).map(([tech, v]) => (
           <div key={tech} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
-            <span style={{ width: 130, fontSize: 12.5, color: "#3D4852", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tech}</span>
-            <div style={{ flex: 1, display: "flex", background: "#F0F3F5", borderRadius: 4, height: 14, overflow: "hidden" }}>
+            <span style={{ width: 130, fontSize: 12.5, color: "var(--text-soft)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tech}</span>
+            <div style={{ flex: 1, display: "flex", background: "var(--track)", borderRadius: 4, height: 14, overflow: "hidden" }}>
               <div style={{ width: maxTech ? ((v.active / maxTech) * 100) + "%" : 0, background: "#E67E22", height: "100%" }} />
               <div style={{ width: maxTech ? ((v.resolved / maxTech) * 100) + "%" : 0, background: "#0E7C66", height: "100%" }} />
             </div>
-            <span style={{ fontFamily: mono, fontSize: 12, color: "#16212B", width: 70, textAlign: "right" }}>
+            <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text)", width: 70, textAlign: "right" }}>
               {v.active} / {v.resolved}
             </span>
           </div>
         ))}
-        <div style={{ fontSize: 11.5, color: "#8593A0", marginTop: 8 }}>
+        <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 8 }}>
           <span style={{ color: "#E67E22" }}>■</span> active&nbsp;&nbsp;
           <span style={{ color: "#0E7C66" }}>■</span> resolved&nbsp;&nbsp;(counts shown as active / resolved)
         </div>
