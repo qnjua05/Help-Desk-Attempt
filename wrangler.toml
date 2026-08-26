@@ -11,11 +11,18 @@ compatibility_date = "2025-08-01"
 directory = "./public"
 binding = "ASSETS"
 
+# Email-to-ticket: poll the shared mailbox every 5 minutes.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Non-secret config for the email poller. Secrets (ENTRA_TENANT_ID,
+# ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET) go in via `wrangler secret put`.
+[vars]
+HELPDESK_MAILBOX = "helpmatt@mesinc.net"
+
 # D1 database binding.
 # After creating the database (see SETUP.md), paste its ID below.
 [[d1_databases]]
 binding = "DB"
 database_name = "helpdesk"
 database_id = "e1326fb8-089e-4a1e-bdda-1c8602a08a84"
-[vars]
-HELPDESK_MAILBOX = "helpmatt@mesinc.net"
