@@ -99,24 +99,6 @@ function htmlToText(html) {
 }
 
 function tidy(text) {
-  // strip inline-image refs and (conservatively) the signature block
-function cleanEmailBody(text, fromName) {
-  let t = (text || "")
-    .replace(/\[cid:[^\]]*\]/gi, "");           // 1. inline image references
-
-  // 2. high-confidence signature markers
-  t = t.split(/^--\s*$/m)[0];                    // RFC "-- " delimiter
-  t = t.replace(/^sent from my .{0,40}$/gim, "");
-
-  // 3. MES signature: sender's name near the bottom, followed by phone/site
-  //    (only searched in the bottom third, only trimmed if enough body remains)
-  ...
-
-  return t;
-}
-
-const bodyText = tidy(
-  cleanEmailBody(parsed.text || htmlToText(parsed.html), fromName));
   const t = (text || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
   return t.length > 4000 ? t.slice(0, 4000) + "\n\n[truncated]" : t;
 }
