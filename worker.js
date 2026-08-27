@@ -16,6 +16,7 @@
 const CATEGORIES = ["Hardware", "Software", "Network", "Accounts & Access", "Email / M365", "Printing", "Other"];
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
 const STATUSES = ["Open", "In Progress", "On Hold", "Resolved"];
+const REQUEST_TYPES = ["Incident", "Service Request", "Question", "Change"];
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -33,6 +34,8 @@ function rowToTicket(row, notes) {
     description: row.description || "",
     requester: row.requester || "",
     category: row.category,
+    subCategory: row.sub_category || "",
+    requestType: row.request_type || "Incident",
     priority: row.priority,
     status: row.status,
     assignee: row.assignee,
@@ -208,12 +211,14 @@ export default {
           }
           const now = new Date().toISOString();
           const res = await env.DB.prepare(
-            "INSERT INTO tickets (subject, description, requester, category, priority, status, assignee, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'Open', 'Unassigned', ?, ?)"
+            "INSERT INTO tickets (subject, description, requester, category, sub_category, request_type, priority, status, assignee, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'Open', 'Unassigned', ?, ?)"
           ).bind(
             String(b.subject).trim(),
             String(b.description || "").trim(),
             String(b.requester || "").trim(),
             CATEGORIES.includes(b.category) ? b.category : "Other",
+            String(b.subCategory || "").trim().slice(0, 60),
+            REQUEST_TYPES.includes(b.requestType) ? b.requestType : "Incident",
             PRIORITIES.includes(b.priority) ? b.priority : "Medium",
             now,
             now
@@ -256,6 +261,16 @@ export default {
               assignee: null, // any name allowed; UI restricts to roster
               priority: PRIORITIES,
               category: CATEGORIES,
+              request_type: REQUEST_TYPES,
+              sub_category: null, // free text; UI restricts to taxonomy
+            };
+            const fieldLabels = {
+              status: "Status",
+              assignee: "Technician",
+              priority: "Priority",
+              category: "Category",
+              request_type: "Request type",
+              sub_category: "Sub category",
             };
             const updates = {};
             const changes = [];
@@ -265,9 +280,9 @@ export default {
                 if (allowed && !allowed.includes(b[f])) {
                   return json({ error: "Invalid value for " + f }, 400);
                 }
-                updates[f] = b[f];
+                updates[f] = f === "sub_category" ? String(b[f]).trim().slice(0, 60) : b[f];
                 changes.push(
-                  f.charAt(0).toUpperCase() + f.slice(1) + ": " + current[f] + " → " + b[f]
+                  fieldLabels[f] + ": " + (current[f] || "—") + " → " + (updates[f] || "—")
                 );
               }
             }
