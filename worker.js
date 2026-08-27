@@ -103,6 +103,54 @@ function tidy(text) {
   return t.length > 4000 ? t.slice(0, 4000) + "\n\n[truncated]" : t;
 }
 
+// Clean an inbound email body before it becomes a ticket description or note.
+//
+// Tier 1 (always): strip [cid:...] inline-image references left over from
+//   HTML mail (signature logos etc.) — they carry no information as text.
+// Tier 2 (always): cut at high-confidence signature markers — the RFC
+//   "-- " delimiter and "Sent from my ..." mobile footers.
+// Tier 3 (conservative): Outlook-style signatures. A line that exactly
+//   matches the sender's display name AND is followed within 6 lines by a
+//   phone number, a website, or the sender's own email address is treated
+//   as the start of the signature and everything from it is dropped.
+//   Guardrails: never triggers on the first line, requires the shape
+//   evidence (a bare name mention mid-message never matches), and never
+//   trims if fewer than 12 characters of body would remain.
+function cleanEmailBody(text, fromName, fromAddr) {
+  let t = (text || "").replace(/\r/g, "");
+
+  // 1. inline image references
+  t = t.replace(/\[cid:[^\]]*\]/gi, "");
+
+  // 2a. RFC signature delimiter: "--" or "-- " on its own line
+  const rfc = t.search(/^--[ \t]*$/m);
+  if (rfc !== -1) t = t.slice(0, rfc);
+
+  // 2b. mobile-client footers
+  t = t.replace(/^sent from my [^\n]{0,60}$/gim, "");
+
+  // 3. sender-signature heuristic
+  const nameNorm = (fromName || "").trim().replace(/\s+/g, " ").toLowerCase();
+  const addrNorm = (fromAddr || "").trim().toLowerCase();
+  const looksLikeName = nameNorm && nameNorm !== addrNorm && !nameNorm.includes("@");
+  if (looksLikeName) {
+    const lines = t.split("\n");
+    const phoneRe = /\+?\d[\d\s().,-]{6,}\d/;
+    const siteRe = /(www\.|https?:\/\/)[^\s]+/i;
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim().replace(/\s+/g, " ").toLowerCase() !== nameNorm) continue;
+      const tail = lines.slice(i + 1, i + 7).join("\n").toLowerCase();
+      if (phoneRe.test(tail) || siteRe.test(tail) || (addrNorm.includes("@") && tail.includes(addrNorm))) {
+        const kept = lines.slice(0, i).join("\n").trim();
+        if (kept.length >= 12) t = kept;
+        break;
+      }
+    }
+  }
+
+  return t;
+}
+
 async function handleInboundEmail(message, env) {
   // Ignore auto-generated mail (bounces, out-of-office) to avoid loops.
   const autoSubmitted = message.headers.get("auto-submitted");
@@ -114,7 +162,7 @@ async function handleInboundEmail(message, env) {
   const fromAddr = (parsed.from && parsed.from.address) || message.from || "unknown";
   const fromName = (parsed.from && parsed.from.name) || fromAddr;
   const subject = (parsed.subject || "(no subject)").slice(0, 300);
-  const bodyText = tidy(parsed.text || htmlToText(parsed.html));
+  const bodyText = tidy(cleanEmailBody(parsed.text || htmlToText(parsed.html), fromName, fromAddr));
   const messageId = parsed.messageId || "no-id-" + crypto.randomUUID();
 
   // Idempotency: skip anything already processed.
