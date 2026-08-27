@@ -110,6 +110,30 @@
     to { background-position: 0 0, 0 17px; }
   }
 
+  /* master-detail split layout for the queue view */
+  .split-main {
+    display: grid;
+    grid-template-columns: minmax(340px, 480px) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+    padding: 20px 22px 60px;
+  }
+  .detail-pane-wrap { position: sticky; top: 16px; }
+  .pane-placeholder {
+    background: var(--card); border: 1px dashed var(--input-border); border-radius: 10px;
+    padding: 60px 24px; text-align: center; color: var(--text-faint);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; letter-spacing: 0.5px;
+  }
+  .tkt-card.sel {
+    border-color: var(--dispatch);
+    box-shadow: 0 0 0 2px rgba(14, 124, 102, 0.22);
+  }
+  @media (max-width: 980px) {
+    .split-main { grid-template-columns: 1fr; }
+    .detail-pane-wrap { position: static; order: -1; }
+    .pane-placeholder { display: none; }
+  }
+
   /* next-SLA ticker above the queue */
   .sla-tick {
     background: var(--card); border: 1px solid var(--card-border);
@@ -343,11 +367,18 @@ function HelpdeskApp() {
       const t = await api("/api/tickets", { method: "POST", body: JSON.stringify(form) });
       setTickets((prev) => [t, ...prev]);
       setSelectedId(t.id);
-      setView("detail");
+      setView("list"); // new ticket opens in the split-view pane
       setApiError("");
     } catch (e) {
       setApiError("Couldn't create ticket — " + e.message);
     }
+  }
+
+  function openTicket(id) {
+    setSelectedId(id);
+    setView("list");
+    // on narrow screens the pane sits above the queue — bring it into view
+    if (window.innerWidth < 980) window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function updateTicket(id, patch, noteText) {
@@ -566,7 +597,10 @@ function HelpdeskApp() {
         </div>
       )}
 
-      <main style={{ maxWidth: 860, margin: "0 auto", padding: "20px 16px 60px" }}>
+      <main
+        className={view === "list" && !loading ? "split-main" : ""}
+        style={view === "list" && !loading ? {} : { maxWidth: 860, margin: "0 auto", padding: "20px 16px 60px" }}
+      >
         {loading ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--text-mut)", fontFamily: mono, fontSize: 13 }}>
             Loading tickets…
@@ -582,31 +616,41 @@ function HelpdeskApp() {
             onAdd={addTechnician}
             onRemove={removeTechnician}
           />
-        ) : view === "detail" && selected ? (
-          <TicketDetail
-            ticket={selected}
-            onUpdate={updateTicket}
-            onDelete={deleteTicket}
-            technicians={technicians}
-          />
         ) : (
           <React.Fragment>
-            <SlaTicker
-              ticket={nextSla}
-              onOpen={(id) => { setSelectedId(id); setView("detail"); }}
-            />
-            <TicketList
-              tickets={visible}
-              total={tickets.length}
-              statusFilter={statusFilter}
-              setStatusFilter={setStatusFilter}
-              priorityFilter={priorityFilter}
-              setPriorityFilter={setPriorityFilter}
-              search={search}
-              setSearch={setSearch}
-              onOpen={(id) => { setSelectedId(id); setView("detail"); }}
-              onNew={() => setView("new")}
-            />
+            <div>
+              <SlaTicker ticket={nextSla} onOpen={openTicket} />
+              <TicketList
+                tickets={visible}
+                total={tickets.length}
+                statusFilter={statusFilter}
+                setStatusFilter={setStatusFilter}
+                priorityFilter={priorityFilter}
+                setPriorityFilter={setPriorityFilter}
+                search={search}
+                setSearch={setSearch}
+                selectedId={selectedId}
+                onOpen={openTicket}
+                onNew={() => setView("new")}
+              />
+            </div>
+            <div className="detail-pane-wrap">
+              {selected ? (
+                <TicketDetail
+                  key={selected.id}
+                  ticket={selected}
+                  onUpdate={updateTicket}
+                  onDelete={deleteTicket}
+                  technicians={technicians}
+                  embedded={true}
+                  onClose={() => setSelectedId(null)}
+                />
+              ) : (
+                <div className="pane-placeholder">
+                  SELECT A TICKET TO VIEW AND EDIT IT HERE
+                </div>
+              )}
+            </div>
           </React.Fragment>
         )}
       </main>
@@ -638,7 +682,7 @@ function SlaTicker({ ticket, onOpen }) {
 }
 
 // ---------- list view ----------
-function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFilter, setPriorityFilter, search, setSearch, onOpen, onNew }) {
+function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFilter, setPriorityFilter, search, setSearch, selectedId, onOpen, onNew }) {
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
@@ -689,7 +733,7 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
           <button
             key={t.id}
             onClick={() => onOpen(t.id)}
-            className={"tkt-card" + (isOverdue(t) ? " hazard" : "")}
+            className={"tkt-card" + (isOverdue(t) ? " hazard" : "") + (t.id === selectedId ? " sel" : "")}
             style={{
               display: "block", width: "100%", textAlign: "left", cursor: "pointer",
               background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 8,
@@ -849,7 +893,7 @@ function NewTicketForm({ onCreate, onCancel }) {
 }
 
 // ---------- detail view ----------
-function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
+function TicketDetail({ ticket, onUpdate, onDelete, technicians, embedded, onClose }) {
   const [note, setNote] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const assigneeOptions = Array.from(new Set(["Unassigned", ...(technicians || []), ticket.assignee]));
@@ -865,7 +909,7 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+    <div style={embedded ? {} : { maxWidth: 720, margin: "0 auto" }}>
       <div style={{
         background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10,
         borderLeft: "5px solid " + PRIORITY_COLOR[ticket.priority],
@@ -873,7 +917,21 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
           <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-mut)" }}>{ticket.key}</span>
-          <StatusPill status={ticket.status} />
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <StatusPill status={ticket.status} />
+            {onClose && (
+              <button
+                onClick={onClose}
+                title="Close"
+                style={{
+                  background: "transparent", border: "1px solid var(--input-border)", borderRadius: 6,
+                  color: "var(--text-mut)", padding: "3px 9px", fontSize: 12, cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </span>
         </div>
         <h2 style={{ margin: "0 0 10px", fontSize: 19, fontWeight: 700 }}>{ticket.subject}</h2>
 
