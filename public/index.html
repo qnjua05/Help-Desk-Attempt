@@ -9,7 +9,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Ticket Desk — Internal Helpdesk</title>
+<title>MESHELPDESK — Internal Helpdesk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -110,6 +110,34 @@
     to { background-position: 0 0, 0 17px; }
   }
 
+  /* KPI strip above the queue */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  @media (max-width: 760px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+  .kpi {
+    background: var(--card); border: 1px solid var(--card-border); border-radius: 8px;
+    padding: 12px 14px; text-align: left; cursor: pointer; font-family: inherit;
+  }
+  .kpi:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 4px 14px var(--shadow); filter: none; }
+  .kpi:disabled { cursor: default; }
+  .kpi.kpi-active { border-color: var(--dispatch); box-shadow: 0 0 0 2px rgba(14, 124, 102, 0.18); }
+  .kpi .k-num { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 24px; font-weight: 700; line-height: 1.1; color: var(--text); }
+  .kpi .k-cap { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.8px; color: var(--text-mut); text-transform: uppercase; margin-top: 4px; }
+  .kpi .k-sub { font-size: 11px; color: var(--text-faint); margin-top: 6px; }
+  .kpi.warn .k-num { color: var(--alarm-strong); }
+  .kpi.ok .k-num { color: var(--dispatch); }
+  .sla-tick {
+    grid-column: 1 / -1; background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 8px; padding: 9px 14px; display: flex; align-items: center; gap: 12px;
+    font-size: 12px; color: var(--text-soft); flex-wrap: wrap; cursor: pointer;
+    text-align: left; font-family: inherit; width: 100%;
+  }
+  .sla-tick:hover { box-shadow: 0 4px 14px var(--shadow); filter: none; }
+  .sla-tick .tag {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 1px;
+    color: var(--st-prog-fg); background: var(--st-prog-bg); border-radius: 4px; padding: 3px 7px;
+    text-transform: uppercase; font-weight: 600;
+  }
+
   /* live refresh indicator in the header */
   .livedot {
     width: 7px; height: 7px; border-radius: 50%;
@@ -127,6 +155,7 @@
     .hazard, .livedot { animation: none; }
     .tkt-card, button, input, select, textarea { transition: none; }
     .tkt-card:hover { transform: none; }
+    .kpi:not(:disabled):hover { transform: none; }
   }
 </style>
 <script>
@@ -185,6 +214,12 @@ function dueAt(t) {
 
 function isOverdue(t) {
   return t.status !== "Resolved" && Date.now() > dueAt(t).getTime();
+}
+
+function isDueSoon(t) {
+  if (t.status === "Resolved") return false;
+  const remaining = dueAt(t).getTime() - Date.now();
+  return remaining > 0 && remaining <= 4 * 3600000; // due within 4 hours
 }
 
 function dueLabel(t) {
@@ -376,11 +411,43 @@ function HelpdeskApp() {
 
   const overdueCount = useMemo(() => tickets.filter(isOverdue).length, [tickets]);
 
+  const kpi = useMemo(() => {
+    const active = tickets.filter((t) => t.status !== "Resolved");
+    const unassigned = active.filter((t) => t.assignee === "Unassigned").length;
+    const dueSoon = active.filter(isDueSoon).length;
+
+    let avgAgeMs = null;
+    if (active.length) {
+      avgAgeMs = active.reduce((acc, t) => acc + (Date.now() - new Date(t.createdAt).getTime()), 0) / active.length;
+    }
+
+    const weekAgo = Date.now() - 7 * 24 * 3600000;
+    const resolved7 = tickets.filter(
+      (t) => t.status === "Resolved" && new Date(t.resolvedAt || t.updatedAt).getTime() >= weekAgo
+    );
+    let avgResolveMs = null;
+    if (resolved7.length) {
+      avgResolveMs = resolved7.reduce((acc, t) => {
+        const end = new Date(t.resolvedAt || t.updatedAt).getTime();
+        return acc + Math.max(0, end - new Date(t.createdAt).getTime());
+      }, 0) / resolved7.length;
+    }
+
+    const nextSla = active
+      .slice()
+      .sort((a, b) => dueAt(a).getTime() - dueAt(b).getTime())[0] || null;
+
+    return { activeCount: active.length, unassigned, dueSoon, avgAgeMs, resolved7: resolved7.length, avgResolveMs, nextSla };
+  }, [tickets]);
+
   const visible = useMemo(() => {
+    const QUICK = ["All", "Active", "Overdue", "Unassigned", "DueSoon"];
     return tickets.filter((t) => {
       if (statusFilter === "Active" && t.status === "Resolved") return false;
       if (statusFilter === "Overdue" && !isOverdue(t)) return false;
-      if (statusFilter !== "All" && statusFilter !== "Active" && statusFilter !== "Overdue" && t.status !== statusFilter) return false;
+      if (statusFilter === "Unassigned" && (t.status === "Resolved" || t.assignee !== "Unassigned")) return false;
+      if (statusFilter === "DueSoon" && !isDueSoon(t)) return false;
+      if (!QUICK.includes(statusFilter) && t.status !== statusFilter) return false;
       if (priorityFilter !== "All" && t.priority !== priorityFilter) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -403,7 +470,7 @@ function HelpdeskApp() {
       }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
           <span style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>
-            TICKET&nbsp;DESK
+            MESHELPDESK
           </span>
           <span style={{ fontFamily: mono, fontSize: 11, color: "#8FA3B0", display: "inline-flex", alignItems: "center", gap: 6 }}>
             <span className="livedot" />live queue
@@ -533,20 +600,96 @@ function HelpdeskApp() {
             technicians={technicians}
           />
         ) : (
-          <TicketList
-            tickets={visible}
-            total={tickets.length}
-            statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
-            priorityFilter={priorityFilter}
-            setPriorityFilter={setPriorityFilter}
-            search={search}
-            setSearch={setSearch}
-            onOpen={(id) => { setSelectedId(id); setView("detail"); }}
-            onNew={() => setView("new")}
-          />
+          <React.Fragment>
+            <KpiStrip
+              kpi={kpi}
+              statusFilter={statusFilter}
+              setStatusFilter={setStatusFilter}
+              onOpen={(id) => { setSelectedId(id); setView("detail"); }}
+            />
+            <TicketList
+              tickets={visible}
+              total={tickets.length}
+              statusFilter={statusFilter}
+              setStatusFilter={setStatusFilter}
+              priorityFilter={priorityFilter}
+              setPriorityFilter={setPriorityFilter}
+              search={search}
+              setSearch={setSearch}
+              onOpen={(id) => { setSelectedId(id); setView("detail"); }}
+              onNew={() => setView("new")}
+            />
+          </React.Fragment>
         )}
       </main>
+    </div>
+  );
+}
+
+// ---------- KPI strip ----------
+function fmtSpan(ms) {
+  if (ms == null) return "—";
+  const h = ms / 3600000;
+  if (h < 1) return Math.max(1, Math.round(ms / 60000)) + "m";
+  if (h < 48) return (h < 10 ? h.toFixed(1) : Math.round(h)) + "h";
+  return (h / 24).toFixed(1) + "d";
+}
+
+function KpiStrip({ kpi, statusFilter, setStatusFilter, onOpen }) {
+  const toggle = (val) => setStatusFilter(statusFilter === val ? "Active" : val);
+  const next = kpi.nextSla;
+  return (
+    <div className="kpi-row">
+      <button
+        className={"kpi" + (kpi.unassigned > 0 ? " warn" : "") + (statusFilter === "Unassigned" ? " kpi-active" : "")}
+        onClick={() => toggle("Unassigned")}
+        title="Show unassigned tickets"
+      >
+        <div className="k-num">{kpi.unassigned}</div>
+        <div className="k-cap">Unassigned</div>
+        <div className="k-sub">click to filter queue</div>
+      </button>
+      <button
+        className={"kpi" + (kpi.dueSoon > 0 ? " warn" : "") + (statusFilter === "DueSoon" ? " kpi-active" : "")}
+        onClick={() => toggle("DueSoon")}
+        title="Show tickets due within 4 hours"
+      >
+        <div className="k-num">{kpi.dueSoon}</div>
+        <div className="k-cap">Due &lt; 4 hrs</div>
+        <div className="k-sub">SLA at risk</div>
+      </button>
+      <button className="kpi" disabled>
+        <div className="k-num">{fmtSpan(kpi.avgAgeMs)}</div>
+        <div className="k-cap">Avg open age</div>
+        <div className="k-sub">across {kpi.activeCount} active ticket{kpi.activeCount === 1 ? "" : "s"}</div>
+      </button>
+      <button
+        className={"kpi ok" + (statusFilter === "Resolved" ? " kpi-active" : "")}
+        onClick={() => toggle("Resolved")}
+        title="Show resolved tickets"
+      >
+        <div className="k-num">{kpi.resolved7}</div>
+        <div className="k-cap">Resolved · 7d</div>
+        <div className="k-sub">{kpi.avgResolveMs != null ? "avg " + fmtSpan(kpi.avgResolveMs) + " to resolve" : "no resolutions yet"}</div>
+      </button>
+      {next && (
+        <button className="sla-tick" onClick={() => onOpen(next.id)} title="Open this ticket">
+          <span className="tag">Next SLA</span>
+          <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-mut)" }}>{next.key}</span>
+          <span style={{ fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 340 }}>
+            {next.subject}
+          </span>
+          <span style={{
+            fontFamily: mono, fontSize: 11, fontWeight: 700,
+            color: isOverdue(next) ? "var(--alarm-strong)" : "var(--text-mut)",
+          }}>
+            {dueLabel(next)}
+          </span>
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-faint)" }}>
+            {next.assignee !== "Unassigned" ? "→ " + next.assignee : "unassigned"}
+          </span>
+        </button>
+      )}
     </div>
   );
 }
@@ -565,6 +708,8 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 130 }}>
           <option value="Active">Active (not resolved)</option>
           <option value="Overdue">Overdue</option>
+          <option value="Unassigned">Unassigned</option>
+          <option value="DueSoon">Due &lt; 4 hrs</option>
           <option value="All">All statuses</option>
           {STATUSES.map((s) => <option key={s}>{s}</option>)}
         </select>
