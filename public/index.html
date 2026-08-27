@@ -110,26 +110,12 @@
     to { background-position: 0 0, 0 17px; }
   }
 
-  /* KPI strip above the queue */
-  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
-  @media (max-width: 760px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
-  .kpi {
-    background: var(--card); border: 1px solid var(--card-border); border-radius: 8px;
-    padding: 12px 14px; text-align: left; cursor: pointer; font-family: inherit;
-  }
-  .kpi:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 4px 14px var(--shadow); filter: none; }
-  .kpi:disabled { cursor: default; }
-  .kpi.kpi-active { border-color: var(--dispatch); box-shadow: 0 0 0 2px rgba(14, 124, 102, 0.18); }
-  .kpi .k-num { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 24px; font-weight: 700; line-height: 1.1; color: var(--text); }
-  .kpi .k-cap { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.8px; color: var(--text-mut); text-transform: uppercase; margin-top: 4px; }
-  .kpi .k-sub { font-size: 11px; color: var(--text-faint); margin-top: 6px; }
-  .kpi.warn .k-num { color: var(--alarm-strong); }
-  .kpi.ok .k-num { color: var(--dispatch); }
+  /* next-SLA ticker above the queue */
   .sla-tick {
-    grid-column: 1 / -1; background: var(--card); border: 1px solid var(--card-border);
+    background: var(--card); border: 1px solid var(--card-border);
     border-radius: 8px; padding: 9px 14px; display: flex; align-items: center; gap: 12px;
     font-size: 12px; color: var(--text-soft); flex-wrap: wrap; cursor: pointer;
-    text-align: left; font-family: inherit; width: 100%;
+    text-align: left; font-family: inherit; width: 100%; margin-bottom: 16px;
   }
   .sla-tick:hover { box-shadow: 0 4px 14px var(--shadow); filter: none; }
   .sla-tick .tag {
@@ -155,7 +141,6 @@
     .hazard, .livedot { animation: none; }
     .tkt-card, button, input, select, textarea { transition: none; }
     .tkt-card:hover { transform: none; }
-    .kpi:not(:disabled):hover { transform: none; }
   }
 </style>
 <script>
@@ -311,6 +296,7 @@ function HelpdeskApp() {
   const [apiError, setApiError] = useState("");
 
   const [view, setView] = useState("list"); // list | new | detail | team | reports
+  const [menuOpen, setMenuOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
 
   const [statusFilter, setStatusFilter] = useState("Active");
@@ -422,33 +408,9 @@ function HelpdeskApp() {
 
   const overdueCount = useMemo(() => tickets.filter(isOverdue).length, [tickets]);
 
-  const kpi = useMemo(() => {
+  const nextSla = useMemo(() => {
     const active = tickets.filter((t) => t.status !== "Resolved");
-    const unassigned = active.filter((t) => t.assignee === "Unassigned").length;
-    const dueSoon = active.filter(isDueSoon).length;
-
-    let avgAgeMs = null;
-    if (active.length) {
-      avgAgeMs = active.reduce((acc, t) => acc + (Date.now() - new Date(t.createdAt).getTime()), 0) / active.length;
-    }
-
-    const weekAgo = Date.now() - 7 * 24 * 3600000;
-    const resolved7 = tickets.filter(
-      (t) => t.status === "Resolved" && new Date(t.resolvedAt || t.updatedAt).getTime() >= weekAgo
-    );
-    let avgResolveMs = null;
-    if (resolved7.length) {
-      avgResolveMs = resolved7.reduce((acc, t) => {
-        const end = new Date(t.resolvedAt || t.updatedAt).getTime();
-        return acc + Math.max(0, end - new Date(t.createdAt).getTime());
-      }, 0) / resolved7.length;
-    }
-
-    const nextSla = active
-      .slice()
-      .sort((a, b) => dueAt(a).getTime() - dueAt(b).getTime())[0] || null;
-
-    return { activeCount: active.length, unassigned, dueSoon, avgAgeMs, resolved7: resolved7.length, avgResolveMs, nextSla };
+    return active.slice().sort((a, b) => dueAt(a).getTime() - dueAt(b).getTime())[0] || null;
   }, [tickets]);
 
   const visible = useMemo(() => {
@@ -487,19 +449,7 @@ function HelpdeskApp() {
             <span className="livedot" />live queue
           </span>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? "Switch to light mode" : "Switch to dark mode"} style={{
-            background: "transparent", color: "#F6F8F9", border: "1px solid #3D4C59",
-            borderRadius: 6, padding: "7px 12px", fontSize: 13, cursor: "pointer",
-          }}>
-            {darkMode ? "☀" : "☾"}
-          </button>
-          <button onClick={() => loadState(true)} title="Refresh" style={{
-            background: "transparent", color: "#F6F8F9", border: "1px solid #3D4C59",
-            borderRadius: 6, padding: "7px 12px", fontSize: 13, cursor: "pointer",
-          }}>
-            ↻
-          </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {view !== "list" && (
             <button onClick={() => { setView("list"); setSelectedId(null); }} style={{
               background: "transparent", color: "#F6F8F9", border: "1px solid #3D4C59",
@@ -508,28 +458,57 @@ function HelpdeskApp() {
               ← Queue
             </button>
           )}
-          {view !== "reports" && (
-            <button onClick={() => { setView("reports"); setSelectedId(null); }} style={{
-              background: "transparent", color: "#F6F8F9", border: "1px solid #3D4C59",
-              borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer",
-            }}>
-              Reports
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              title="Menu"
+              style={{
+                background: menuOpen ? "#1B2A3D" : "transparent", color: "#F6F8F9",
+                border: "1px solid #3D4C59", borderRadius: 6, padding: "7px 12px",
+                fontSize: 15, cursor: "pointer", lineHeight: 1,
+              }}
+            >
+              ⚙
             </button>
-          )}
-          {view !== "team" && (
-            <button onClick={() => { setView("team"); setSelectedId(null); }} style={{
-              background: "transparent", color: "#F6F8F9", border: "1px solid #3D4C59",
-              borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer",
-            }}>
-              Team
-            </button>
-          )}
-          <button onClick={() => setView("new")} style={{
-            background: "#0E7C66", color: "#fff", border: "none", borderRadius: 6,
-            padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-          }}>
-            + New ticket
-          </button>
+            {menuOpen && (
+              <React.Fragment>
+                <div
+                  onClick={() => setMenuOpen(false)}
+                  style={{ position: "fixed", inset: 0, zIndex: 90 }}
+                />
+                <div style={{
+                  position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 100,
+                  background: "var(--card)", border: "1px solid var(--card-border)",
+                  borderRadius: 8, boxShadow: "0 8px 24px var(--shadow)",
+                  minWidth: 190, overflow: "hidden", padding: "4px 0",
+                }}>
+                  {[
+                    { label: "+ New ticket", strong: true, act: () => { setView("new"); setSelectedId(null); } },
+                    { label: "Reports", act: () => { setView("reports"); setSelectedId(null); } },
+                    { label: "Team", act: () => { setView("team"); setSelectedId(null); } },
+                    { label: "↻ Refresh", act: () => loadState(true) },
+                    { label: darkMode ? "☀ Light mode" : "☾ Dark mode", act: () => setDarkMode((d) => !d) },
+                  ].map((item) => (
+                    <button
+                      key={item.label}
+                      onClick={() => { setMenuOpen(false); item.act(); }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left",
+                        background: "transparent", border: "none", cursor: "pointer",
+                        padding: "9px 14px", fontSize: 13, color: "var(--text)",
+                        fontWeight: item.strong ? 700 : 400,
+                        fontFamily: "inherit",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--well)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </React.Fragment>
+            )}
+          </div>
         </div>
       </header>
 
@@ -612,10 +591,8 @@ function HelpdeskApp() {
           />
         ) : (
           <React.Fragment>
-            <KpiStrip
-              kpi={kpi}
-              statusFilter={statusFilter}
-              setStatusFilter={setStatusFilter}
+            <SlaTicker
+              ticket={nextSla}
               onOpen={(id) => { setSelectedId(id); setView("detail"); }}
             />
             <TicketList
@@ -637,71 +614,26 @@ function HelpdeskApp() {
   );
 }
 
-// ---------- KPI strip ----------
-function fmtSpan(ms) {
-  if (ms == null) return "—";
-  const h = ms / 3600000;
-  if (h < 1) return Math.max(1, Math.round(ms / 60000)) + "m";
-  if (h < 48) return (h < 10 ? h.toFixed(1) : Math.round(h)) + "h";
-  return (h / 24).toFixed(1) + "d";
-}
-
-function KpiStrip({ kpi, statusFilter, setStatusFilter, onOpen }) {
-  const toggle = (val) => setStatusFilter(statusFilter === val ? "Active" : val);
-  const next = kpi.nextSla;
+// ---------- next-SLA ticker ----------
+function SlaTicker({ ticket, onOpen }) {
+  if (!ticket) return null;
   return (
-    <div className="kpi-row">
-      <button
-        className={"kpi" + (kpi.unassigned > 0 ? " warn" : "") + (statusFilter === "Unassigned" ? " kpi-active" : "")}
-        onClick={() => toggle("Unassigned")}
-        title="Show unassigned tickets"
-      >
-        <div className="k-num">{kpi.unassigned}</div>
-        <div className="k-cap">Unassigned</div>
-        <div className="k-sub">click to filter queue</div>
-      </button>
-      <button
-        className={"kpi" + (kpi.dueSoon > 0 ? " warn" : "") + (statusFilter === "DueSoon" ? " kpi-active" : "")}
-        onClick={() => toggle("DueSoon")}
-        title="Show tickets due within 4 hours"
-      >
-        <div className="k-num">{kpi.dueSoon}</div>
-        <div className="k-cap">Due &lt; 4 hrs</div>
-        <div className="k-sub">SLA at risk</div>
-      </button>
-      <button className="kpi" disabled>
-        <div className="k-num">{fmtSpan(kpi.avgAgeMs)}</div>
-        <div className="k-cap">Avg open age</div>
-        <div className="k-sub">across {kpi.activeCount} active ticket{kpi.activeCount === 1 ? "" : "s"}</div>
-      </button>
-      <button
-        className={"kpi ok" + (statusFilter === "Resolved" ? " kpi-active" : "")}
-        onClick={() => toggle("Resolved")}
-        title="Show resolved tickets"
-      >
-        <div className="k-num">{kpi.resolved7}</div>
-        <div className="k-cap">Resolved · 7d</div>
-        <div className="k-sub">{kpi.avgResolveMs != null ? "avg " + fmtSpan(kpi.avgResolveMs) + " to resolve" : "no resolutions yet"}</div>
-      </button>
-      {next && (
-        <button className="sla-tick" onClick={() => onOpen(next.id)} title="Open this ticket">
-          <span className="tag">Next SLA</span>
-          <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-mut)" }}>{next.key}</span>
-          <span style={{ fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 340 }}>
-            {next.subject}
-          </span>
-          <span style={{
-            fontFamily: mono, fontSize: 11, fontWeight: 700,
-            color: isOverdue(next) ? "var(--alarm-strong)" : "var(--text-mut)",
-          }}>
-            {dueLabel(next)}
-          </span>
-          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-faint)" }}>
-            {next.assignee !== "Unassigned" ? "→ " + next.assignee : "unassigned"}
-          </span>
-        </button>
-      )}
-    </div>
+    <button className="sla-tick" onClick={() => onOpen(ticket.id)} title="Open this ticket">
+      <span className="tag">Next SLA</span>
+      <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-mut)" }}>{ticket.key}</span>
+      <span style={{ fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 340 }}>
+        {ticket.subject}
+      </span>
+      <span style={{
+        fontFamily: mono, fontSize: 11, fontWeight: 700,
+        color: isOverdue(ticket) ? "var(--alarm-strong)" : "var(--text-mut)",
+      }}>
+        {dueLabel(ticket)}
+      </span>
+      <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-faint)" }}>
+        {ticket.assignee !== "Unassigned" ? "→ " + ticket.assignee : "unassigned"}
+      </span>
+    </button>
   );
 }
 
