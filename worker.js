@@ -115,7 +115,8 @@ function cleanEmailBody(text, fromName) {
   return t;
 }
 
-const bodyText = tidy(cleanEmailBody(parsed.text || htmlToText(parsed.html), fromName));
+const bodyText = tidy(
+  cleanEmailBody(parsed.text || htmlToText(parsed.html), fromName));
   const t = (text || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
   return t.length > 4000 ? t.slice(0, 4000) + "\n\n[truncated]" : t;
 }
