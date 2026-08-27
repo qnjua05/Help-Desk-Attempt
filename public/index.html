@@ -178,6 +178,17 @@ const CATEGORIES = ["Hardware", "Software", "Network", "Accounts & Access", "Ema
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
 const SLA_HOURS = { Critical: 4, High: 24, Medium: 72, Low: 120 }; // resolution targets
 const STATUSES = ["Open", "In Progress", "On Hold", "Resolved"];
+const REQUEST_TYPES = ["Incident", "Service Request", "Question", "Change"];
+const REQUEST_TYPE_EDGE = { Incident: "var(--alarm-strong)", "Service Request": "#2980B9" };
+const SUBCATS = {
+  "Hardware": ["Laptop", "Desktop", "Monitor / Peripherals", "Printer / Scanner", "Mobile device", "Other hardware"],
+  "Software": ["Business application", "Operating system", "Browser", "Licensing / Install", "Other software"],
+  "Network": ["Wi-Fi / Wireless", "VPN", "Wired / Switch", "Internet / WAN", "Firewall / Zero Trust", "Other network"],
+  "Accounts & Access": ["Password reset", "New account", "Permissions / Groups", "MFA / Sign-in", "Offboarding", "Other access"],
+  "Email / M365": ["Outlook / Exchange", "Teams", "SharePoint / OneDrive", "Distribution groups", "Licensing", "Other M365"],
+  "Printing": ["Cannot print", "Print quality", "Scanner / Copier", "Driver / Queue", "Other printing"],
+  "Other": ["General request", "Facilities / AV", "Uncategorized"],
+};
 
 const PRIORITY_COLOR = {
   Critical: "#C0392B",
@@ -765,7 +776,7 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
             </div>
             <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text-mut)", alignItems: "center" }}>
               <PriorityDot priority={t.priority} />
-              <span>{t.category}</span>
+              <span>{t.category}{t.subCategory ? " / " + t.subCategory : ""}</span>
               <span>from {t.requester || "—"}</span>
               <span>{t.assignee !== "Unassigned" ? "→ " + t.assignee : "unassigned"}</span>
               {dueLabel(t) && (
@@ -791,6 +802,7 @@ function NewTicketForm({ onCreate, onCancel }) {
   const [form, setForm] = useState({
     subject: "", description: "", requester: "",
     category: CATEGORIES[0], priority: "Medium",
+    requestType: "Incident", subCategory: "",
   });
   const [touched, setTouched] = useState(false);
   const valid = form.subject.trim().length > 0;
@@ -833,9 +845,44 @@ function NewTicketForm({ onCreate, onCancel }) {
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 160 }}>
+          <Field label="Request type">
+            <select
+              style={{
+                ...inputStyle,
+                borderLeft: REQUEST_TYPE_EDGE[form.requestType]
+                  ? "3px solid " + REQUEST_TYPE_EDGE[form.requestType]
+                  : inputStyle.border,
+              }}
+              value={form.requestType}
+              onChange={(e) => setForm({ ...form, requestType: e.target.value })}
+            >
+              {REQUEST_TYPES.map((r) => <option key={r}>{r}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div style={{ flex: 1, minWidth: 160 }}>
           <Field label="Category">
-            <select style={inputStyle} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+            <select
+              style={inputStyle}
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value, subCategory: "" })}
+            >
               {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            </select>
+          </Field>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 160 }}>
+          <Field label="Sub category">
+            <select
+              style={inputStyle}
+              value={form.subCategory}
+              onChange={(e) => setForm({ ...form, subCategory: e.target.value })}
+            >
+              <option value="">—</option>
+              {(SUBCATS[form.category] || SUBCATS["Other"]).map((s) => <option key={s}>{s}</option>)}
             </select>
           </Field>
         </div>
@@ -874,6 +921,10 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
   const [note, setNote] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const assigneeOptions = Array.from(new Set(["Unassigned", ...(technicians || []), ticket.assignee]));
+  const subCatOptions = Array.from(new Set([
+    ...(SUBCATS[ticket.category] || SUBCATS["Other"]),
+    ...(ticket.subCategory ? [ticket.subCategory] : []),
+  ]));
 
   function addNote() {
     if (!note.trim()) return;
@@ -896,7 +947,8 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
 
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--text-soft)", marginBottom: 14 }}>
           <PriorityDot priority={ticket.priority} />
-          <span>{ticket.category}</span>
+          <span>{ticket.requestType || "Incident"}</span>
+          <span>{ticket.category}{ticket.subCategory ? " / " + ticket.subCategory : ""}</span>
           <span>Requester: <strong>{ticket.requester || "—"}</strong></span>
           <span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-mut)" }}>opened {fmtDate(ticket.createdAt)}</span>
           {dueLabel(ticket) && (
@@ -920,28 +972,55 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians }) {
         )}
 
         {/* triage controls */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
-          <div style={{ flex: 1, minWidth: 150 }}>
-            <Field label="Status">
-              <select style={inputStyle} value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })}>
-                {STATUSES.map((s) => <option key={s}>{s}</option>)}
-              </select>
-            </Field>
-          </div>
-          <div style={{ flex: 1, minWidth: 150 }}>
-            <Field label="Assigned to">
-              <select style={inputStyle} value={ticket.assignee} onChange={(e) => onUpdate(ticket.id, { assignee: e.target.value })}>
-                {assigneeOptions.map((t) => <option key={t}>{t}</option>)}
-              </select>
-            </Field>
-          </div>
-          <div style={{ flex: 1, minWidth: 150 }}>
-            <Field label="Priority">
-              <select style={inputStyle} value={ticket.priority} onChange={(e) => onUpdate(ticket.id, { priority: e.target.value })}>
-                {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-              </select>
-            </Field>
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 4 }}>
+          <Field label="Status">
+            <select style={inputStyle} value={ticket.status} onChange={(e) => onUpdate(ticket.id, { status: e.target.value })}>
+              {STATUSES.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="Technician">
+            <select style={inputStyle} value={ticket.assignee} onChange={(e) => onUpdate(ticket.id, { assignee: e.target.value })}>
+              {assigneeOptions.map((t) => <option key={t}>{t}</option>)}
+            </select>
+          </Field>
+          <Field label="Priority">
+            <select style={inputStyle} value={ticket.priority} onChange={(e) => onUpdate(ticket.id, { priority: e.target.value })}>
+              {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+            </select>
+          </Field>
+          <Field label="Request type">
+            <select
+              style={{
+                ...inputStyle,
+                borderLeft: REQUEST_TYPE_EDGE[ticket.requestType]
+                  ? "3px solid " + REQUEST_TYPE_EDGE[ticket.requestType]
+                  : inputStyle.border,
+              }}
+              value={ticket.requestType || "Incident"}
+              onChange={(e) => onUpdate(ticket.id, { request_type: e.target.value })}
+            >
+              {REQUEST_TYPES.map((r) => <option key={r}>{r}</option>)}
+            </select>
+          </Field>
+          <Field label="Category">
+            <select
+              style={inputStyle}
+              value={ticket.category}
+              onChange={(e) => onUpdate(ticket.id, { category: e.target.value, sub_category: "" })}
+            >
+              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="Sub category">
+            <select
+              style={inputStyle}
+              value={ticket.subCategory || ""}
+              onChange={(e) => onUpdate(ticket.id, { sub_category: e.target.value })}
+            >
+              <option value="">—</option>
+              {subCatOptions.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </Field>
         </div>
 
         {ticket.status !== "Resolved" ? (
