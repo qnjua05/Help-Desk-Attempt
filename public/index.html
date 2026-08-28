@@ -113,12 +113,40 @@
   /* master-detail split layout for the queue view */
   .split-main {
     display: grid;
-    grid-template-columns: minmax(340px, 480px) minmax(0, 1fr);
-    gap: 20px;
+    grid-template-columns: minmax(300px, var(--list-w, 430px)) 8px minmax(0, 1fr);
+    gap: 0 12px;
     align-items: start;
-    padding: 20px 22px 60px;
+    padding: 20px 22px 40px;
   }
-  .detail-pane-wrap { position: sticky; top: 16px; }
+  .list-pane { min-width: 0; }
+  .pane-divider {
+    width: 8px; align-self: stretch; cursor: col-resize;
+    position: relative; border-radius: 4px;
+  }
+  .pane-divider::after {
+    content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px;
+    background: var(--card-border); border-radius: 2px;
+  }
+  .pane-divider:hover::after, .pane-divider.dragging::after { background: var(--dispatch); }
+  .detail-pane-wrap {
+    position: sticky; top: 16px;
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
+    padding-right: 3px;
+  }
+  .tkt-scroll {
+    max-height: calc(100vh - 320px);
+    overflow-y: auto;
+    padding-right: 5px;
+  }
+  .tkt-scroll, .detail-pane-wrap { scrollbar-width: thin; scrollbar-color: var(--input-border) transparent; }
+  .tkt-scroll::-webkit-scrollbar, .detail-pane-wrap::-webkit-scrollbar { width: 8px; }
+  .tkt-scroll::-webkit-scrollbar-thumb, .detail-pane-wrap::-webkit-scrollbar-thumb {
+    background: var(--input-border); border-radius: 4px;
+  }
+  .tkt-scroll::-webkit-scrollbar-thumb:hover, .detail-pane-wrap::-webkit-scrollbar-thumb:hover {
+    background: var(--text-faint);
+  }
   .pane-placeholder {
     background: var(--card); border: 1px dashed var(--input-border); border-radius: 10px;
     padding: 60px 24px; text-align: center; color: var(--text-faint);
@@ -130,7 +158,9 @@
   }
   @media (max-width: 980px) {
     .split-main { grid-template-columns: 1fr; }
-    .detail-pane-wrap { position: static; order: -1; }
+    .pane-divider { display: none; }
+    .detail-pane-wrap { position: static; order: -1; max-height: none; overflow: visible; }
+    .tkt-scroll { max-height: none; overflow: visible; padding-right: 0; }
     .pane-placeholder { display: none; }
   }
 
@@ -325,6 +355,7 @@ function HelpdeskApp() {
 
   const [statusFilter, setStatusFilter] = useState("Active");
   const [priorityFilter, setPriorityFilter] = useState("All");
+  const [assigneeFilter, setAssigneeFilter] = useState("All");
   const [search, setSearch] = useState("");
 
   const [darkMode, setDarkMode] = useState(() => document.documentElement.dataset.theme === "dark");
@@ -453,6 +484,7 @@ function HelpdeskApp() {
       if (statusFilter === "DueSoon" && !isDueSoon(t)) return false;
       if (!QUICK.includes(statusFilter) && t.status !== statusFilter) return false;
       if (priorityFilter !== "All" && t.priority !== priorityFilter) return false;
+      if (assigneeFilter !== "All" && t.assignee !== assigneeFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         const hay = (t.key + " " + t.subject + " " + t.requester + " " + t.category + " " + t.assignee).toLowerCase();
@@ -460,7 +492,7 @@ function HelpdeskApp() {
       }
       return true;
     });
-  }, [tickets, statusFilter, priorityFilter, search]);
+  }, [tickets, statusFilter, priorityFilter, assigneeFilter, search]);
 
   const selected = tickets.find((t) => t.id === selectedId);
 
@@ -618,8 +650,7 @@ function HelpdeskApp() {
           />
         ) : (
           <React.Fragment>
-            <div>
-              <SlaTicker ticket={nextSla} onOpen={openTicket} />
+            <div className="list-pane">
               <TicketList
                 tickets={visible}
                 total={tickets.length}
@@ -627,6 +658,9 @@ function HelpdeskApp() {
                 setStatusFilter={setStatusFilter}
                 priorityFilter={priorityFilter}
                 setPriorityFilter={setPriorityFilter}
+                assigneeFilter={assigneeFilter}
+                setAssigneeFilter={setAssigneeFilter}
+                technicians={technicians}
                 search={search}
                 setSearch={setSearch}
                 selectedId={selectedId}
@@ -634,6 +668,7 @@ function HelpdeskApp() {
                 onNew={() => setView("new")}
               />
             </div>
+            <PaneDivider />
             <div className="detail-pane-wrap">
               {selected ? (
                 <TicketDetail
@@ -682,17 +717,43 @@ function SlaTicker({ ticket, onOpen }) {
 }
 
 // ---------- list view ----------
-function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFilter, setPriorityFilter, search, setSearch, selectedId, onOpen, onNew }) {
+function PaneDivider() {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem("hd_list_w");
+      if (saved && ref.current) ref.current.parentElement.style.setProperty("--list-w", saved);
+    } catch (e) {}
+  }, []);
+  function onDown(e) {
+    e.preventDefault();
+    const el = ref.current;
+    const main = el.parentElement;
+    const startX = e.clientX;
+    const startW = main.querySelector(".list-pane").getBoundingClientRect().width;
+    el.classList.add("dragging");
+    function move(ev) {
+      const w = Math.min(Math.max(startW + (ev.clientX - startX), 300), Math.max(360, window.innerWidth * 0.6));
+      main.style.setProperty("--list-w", Math.round(w) + "px");
+    }
+    function up() {
+      el.classList.remove("dragging");
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      try { localStorage.setItem("hd_list_w", main.style.getPropertyValue("--list-w")); } catch (e) {}
+    }
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  }
+  return <div ref={ref} className="pane-divider" onMouseDown={onDown} title="Drag to resize panes" />;
+}
+
+function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFilter, setPriorityFilter, assigneeFilter, setAssigneeFilter, technicians, search, setSearch, selectedId, onOpen, onNew }) {
+  const techOptions = Array.from(new Set(["Unassigned", ...(technicians || [])]));
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        <input
-          placeholder="Search subject, requester, ticket #…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...inputStyle, flex: 2, minWidth: 200 }}
-        />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 130 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 120 }}>
           <option value="Active">Active (not resolved)</option>
           <option value="Overdue">Overdue</option>
           <option value="Unassigned">Unassigned</option>
@@ -700,10 +761,22 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
           <option value="All">All statuses</option>
           {STATUSES.map((s) => <option key={s}>{s}</option>)}
         </select>
-        <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 120 }}>
+        <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 110 }}>
           <option value="All">All priorities</option>
           {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
         </select>
+        <select value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} style={{ ...inputStyle, flex: 1, minWidth: 120 }}>
+          <option value="All">All technicians</option>
+          {techOptions.map((t) => <option key={t}>{t}</option>)}
+        </select>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <input
+          placeholder="Search subject, requester, ticket #…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ ...inputStyle }}
+        />
       </div>
 
       {total === 0 ? (
@@ -729,7 +802,8 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
           No tickets match these filters.
         </div>
       ) : (
-        tickets.map((t) => (
+        <div className="tkt-scroll">
+          {tickets.map((t) => (
           <button
             key={t.id}
             onClick={() => onOpen(t.id)}
@@ -738,7 +812,7 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
               display: "block", width: "100%", textAlign: "left", cursor: "pointer",
               background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 8,
               borderLeft: "4px solid " + PRIORITY_COLOR[t.priority],
-              padding: "12px 14px", marginBottom: 8, fontFamily: sans,
+              padding: "7px 12px", marginBottom: 6, fontFamily: sans,
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -750,7 +824,7 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
               </div>
               <StatusPill status={t.status} />
             </div>
-            <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text-mut)", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 12, marginTop: 4, flexWrap: "wrap", fontSize: 12, color: "var(--text-mut)", alignItems: "center" }}>
               <PriorityDot priority={t.priority} />
               <span>{t.category}{t.subCategory ? " / " + t.subCategory : ""}</span>
               <span>from {t.requester || "—"}</span>
@@ -767,7 +841,8 @@ function TicketList({ tickets, total, statusFilter, setStatusFilter, priorityFil
               <span style={{ marginLeft: "auto", fontFamily: mono, fontSize: 11 }}>{timeAgo(t.updatedAt)}</span>
             </div>
           </button>
-        ))
+          ))}
+        </div>
       )}
     </div>
   );
@@ -898,6 +973,31 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians, embedded, onClo
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ subject: "", description: "", requester: "" });
+  const [triage, setTriage] = useState(null);
+  const [triageLoading, setTriageLoading] = useState(false);
+  const [triageError, setTriageError] = useState("");
+
+  async function runTriage() {
+    setTriageLoading(true);
+    setTriageError("");
+    setTriage(null);
+    try {
+      const parsed = await api("/api/triage", {
+        method: "POST",
+        body: JSON.stringify({
+          subject: ticket.subject,
+          description: ticket.description,
+          category: ticket.category,
+          priority: ticket.priority,
+        }),
+      });
+      setTriage(parsed);
+    } catch (e) {
+      setTriageError(e.message || "AI triage failed — try again.");
+    } finally {
+      setTriageLoading(false);
+    }
+  }
 
   function startEdit() {
     setDraft({
@@ -939,6 +1039,19 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians, embedded, onClo
           <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-mut)" }}>{ticket.key}</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
             <StatusPill status={ticket.status} />
+            <button
+              onClick={runTriage}
+              disabled={triageLoading}
+              title="Run AI triage on this ticket"
+              style={{
+                background: triageLoading ? "var(--text-faint)" : "var(--ink-btn)",
+                color: "#fff", border: "none", borderRadius: 6,
+                padding: "4px 10px", fontSize: 12, fontWeight: 600,
+                cursor: triageLoading ? "default" : "pointer",
+              }}
+            >
+              {triageLoading ? "Analyzing…" : "⚡ AI triage"}
+            </button>
             <button
               onClick={() => (editing ? setEditing(false) : startEdit())}
               title={editing ? "Cancel edit" : "Edit details"}
@@ -1105,7 +1218,11 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians, embedded, onClo
       </div>
 
       {/* AI assist */}
-      <AiPanel ticket={ticket} onUpdate={onUpdate} />
+      {(triage || triageError) && (
+        <TriageResults triage={triage} error={triageError} ticket={ticket} onUpdate={onUpdate} />
+      )}
+
+      <RepliesPanel ticket={ticket} onUpdate={onUpdate} />
 
       {/* work notes */}
       <div style={{ background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10, padding: "18px 22px", marginTop: 14 }}>
@@ -1171,44 +1288,7 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians, embedded, onClo
 }
 
 // ---------- AI assist panel ----------
-function AiPanel({ ticket, onUpdate }) {
-  const [triage, setTriage] = useState(null);
-  const [triageLoading, setTriageLoading] = useState(false);
-  const [triageError, setTriageError] = useState("");
-
-  async function runTriage() {
-    setTriageLoading(true);
-    setTriageError("");
-    setTriage(null);
-    try {
-      const parsed = await api("/api/triage", {
-        method: "POST",
-        body: JSON.stringify({
-          subject: ticket.subject,
-          description: ticket.description,
-          category: ticket.category,
-          priority: ticket.priority,
-        }),
-      });
-      setTriage(parsed);
-    } catch (e) {
-      setTriageError(e.message || "AI triage failed — try again.");
-    } finally {
-      setTriageLoading(false);
-    }
-  }
-
-  const aiBtn = (loading) => ({
-    background: loading ? "var(--text-faint)" : "var(--ink-btn)",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-    padding: "8px 14px",
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: loading ? "default" : "pointer",
-  });
-
+function TriageResults({ triage, error, ticket, onUpdate }) {
   const smallBtn = {
     background: "var(--card)",
     color: "#0E7C66",
@@ -1223,33 +1303,21 @@ function AiPanel({ ticket, onUpdate }) {
   return (
     <div style={{
       background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10,
-      padding: "18px 22px", marginTop: 14,
+      padding: "16px 22px", marginTop: 14,
     }}>
       <div style={{
         fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "var(--text-mut)",
-        textTransform: "uppercase", marginBottom: 12,
+        textTransform: "uppercase", marginBottom: 10,
       }}>
-        AI assist
+        AI triage
       </div>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={runTriage} disabled={triageLoading} style={aiBtn(triageLoading)}>
-          {triageLoading ? "Analyzing…" : "AI triage"}
-        </button>
-        <button disabled style={{
-          background: "var(--well)", color: "var(--text-faint)", border: "1px dashed var(--border-soft)",
-          borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "default",
-        }}>
-          M365 lookup — coming soon
-        </button>
-      </div>
-
-      {triageError && (
-        <div style={{ fontSize: 13, color: "#C0392B", marginTop: 10 }}>{triageError}</div>
+      {error && (
+        <div style={{ fontSize: 13, color: "#C0392B" }}>{error}</div>
       )}
 
       {triage && (
-        <div style={{ marginTop: 14, background: "var(--well)", borderRadius: 8, padding: "12px 14px" }}>
+        <div style={{ background: "var(--well)", borderRadius: 8, padding: "12px 14px" }}>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontSize: 13 }}>
               Suggested category: <strong>{triage.category}</strong>{" "}
@@ -1298,6 +1366,82 @@ function AiPanel({ ticket, onUpdate }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------- replies (future email conversation thread) ----------
+function RepliesPanel({ ticket, onUpdate }) {
+  const [reply, setReply] = useState("");
+
+  // Future: when outbound email is connected, this panel will render the
+  // requester conversation (ticket.replies) and "Send reply" will POST to
+  // /api/tickets/:id/replies, which sends the email and stores the message.
+  const replies = ticket.replies || [];
+
+  return (
+    <div style={{
+      background: "var(--card)", border: "1px solid var(--card-border)", borderRadius: 10,
+      padding: "18px 22px", marginTop: 14,
+    }}>
+      <div style={{
+        fontFamily: mono, fontSize: 11, letterSpacing: 0.8, color: "var(--text-mut)",
+        textTransform: "uppercase", marginBottom: 12,
+      }}>
+        Replies ({replies.length})
+      </div>
+
+      {replies.length === 0 ? (
+        <div style={{
+          fontSize: 13, color: "var(--text-mut)", background: "var(--well)",
+          borderRadius: 8, padding: "12px 14px", marginBottom: 12,
+        }}>
+          No replies yet. Once outbound email is connected, the back-and-forth
+          conversation with the requester will appear here.
+        </div>
+      ) : (
+        <div style={{ marginBottom: 12 }}>
+          {replies.map((r, i) => (
+            <div key={i} style={{
+              background: "var(--well)", borderRadius: 8, padding: "10px 14px", marginBottom: 8,
+              borderLeft: "3px solid " + (r.direction === "outbound" ? "#0E7C66" : "var(--input-border)"),
+            }}>
+              <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-mut)", marginBottom: 4 }}>
+                {r.direction === "outbound" ? "→ to requester" : "← from requester"} · {fmtDate(r.at)}
+              </div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{r.text}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <textarea
+        placeholder="Write a reply to the requester…"
+        value={reply}
+        onChange={(e) => setReply(e.target.value)}
+        style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
+      />
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <button disabled title="Requires the outbound email integration" style={{
+          background: "var(--well)", color: "var(--text-faint)", border: "1px dashed var(--border-soft)",
+          borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "default",
+        }}>
+          Send reply — email integration pending
+        </button>
+        <button
+          onClick={() => {
+            if (!reply.trim()) return;
+            onUpdate(ticket.id, {}, "Draft reply to requester:\n" + reply.trim());
+            setReply("");
+          }}
+          style={{
+            background: "var(--card)", color: "#0E7C66", border: "1px solid #0E7C66",
+            borderRadius: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          Save draft to work notes
+        </button>
+      </div>
     </div>
   );
 }
