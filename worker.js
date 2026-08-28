@@ -304,6 +304,12 @@ export default {
             if (!current) return json({ error: "Ticket not found" }, 404);
             const now = new Date().toISOString();
 
+            // Future: restrict detail edits (subject/description/requester) to ticket
+            // administrators. Cloudflare Access forwards the signed-in user in the
+            // "Cf-Access-Authenticated-User-Email" request header — compare it against
+            // an admin list (e.g. an ADMIN_EMAILS env var) and return 403 for non-admins
+            // when b.subject / b.description / b.requester are present.
+
             const allowedValues = {
               status: STATUSES,
               assignee: null, // any name allowed; UI restricts to roster
@@ -311,6 +317,9 @@ export default {
               category: CATEGORIES,
               request_type: REQUEST_TYPES,
               sub_category: null, // free text; UI restricts to taxonomy
+              subject: null, // free text, capped below
+              description: null, // free text
+              requester: null, // free text, capped below
             };
             const fieldLabels = {
               status: "Status",
@@ -319,20 +328,31 @@ export default {
               category: "Category",
               request_type: "Request type",
               sub_category: "Sub category",
+              subject: "Subject",
+              description: "Description",
+              requester: "Requester",
             };
+            const textCaps = { sub_category: 60, subject: 300, requester: 200, description: 20000 };
             const updates = {};
             const changes = [];
             for (const f of Object.keys(allowedValues)) {
-              if (b[f] !== undefined && b[f] !== current[f]) {
-                const allowed = allowedValues[f];
-                if (allowed && !allowed.includes(b[f])) {
-                  return json({ error: "Invalid value for " + f }, 400);
-                }
-                updates[f] = f === "sub_category" ? String(b[f]).trim().slice(0, 60) : b[f];
-                changes.push(
-                  fieldLabels[f] + ": " + (current[f] || "—") + " → " + (updates[f] || "—")
-                );
+              if (b[f] === undefined) continue;
+              let v = b[f];
+              if (textCaps[f] !== undefined) v = String(v).trim().slice(0, textCaps[f]);
+              if (f === "subject" && !v) {
+                return json({ error: "Subject cannot be empty" }, 400);
               }
+              if (v === current[f] || (v === "" && !current[f])) continue;
+              const allowed = allowedValues[f];
+              if (allowed && !allowed.includes(v)) {
+                return json({ error: "Invalid value for " + f }, 400);
+              }
+              updates[f] = v;
+              changes.push(
+                f === "description"
+                  ? "Description updated"
+                  : fieldLabels[f] + ": " + (current[f] || "—") + " → " + (v || "—")
+              );
             }
 
             let resolvedAt = current.resolved_at || null;
