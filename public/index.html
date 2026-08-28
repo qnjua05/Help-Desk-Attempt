@@ -896,6 +896,26 @@ function NewTicketForm({ onCreate, onCancel }) {
 function TicketDetail({ ticket, onUpdate, onDelete, technicians, embedded, onClose }) {
   const [note, setNote] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ subject: "", description: "", requester: "" });
+
+  function startEdit() {
+    setDraft({
+      subject: ticket.subject || "",
+      description: ticket.description || "",
+      requester: ticket.requester || "",
+    });
+    setEditing(true);
+  }
+  function saveEdit() {
+    if (!draft.subject.trim()) return;
+    onUpdate(ticket.id, {
+      subject: draft.subject.trim(),
+      description: draft.description.trim(),
+      requester: draft.requester.trim(),
+    });
+    setEditing(false);
+  }
   const assigneeOptions = Array.from(new Set(["Unassigned", ...(technicians || []), ticket.assignee]));
   const subCatOptions = Array.from(new Set([
     ...(SUBCATS[ticket.category] || SUBCATS["Other"]),
@@ -919,6 +939,16 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians, embedded, onClo
           <span style={{ fontFamily: mono, fontSize: 13, color: "var(--text-mut)" }}>{ticket.key}</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
             <StatusPill status={ticket.status} />
+            <button
+              onClick={() => (editing ? setEditing(false) : startEdit())}
+              title={editing ? "Cancel edit" : "Edit details"}
+              style={{
+                background: "transparent", border: "1px solid var(--input-border)", borderRadius: 6,
+                color: "var(--text-mut)", padding: "3px 9px", fontSize: 12, cursor: "pointer",
+              }}
+            >
+              {editing ? "✕ Cancel" : "✎ Edit"}
+            </button>
             {onClose && (
               <button
                 onClick={onClose}
@@ -933,7 +963,45 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians, embedded, onClo
             )}
           </span>
         </div>
-        <h2 style={{ margin: "0 0 10px", fontSize: 19, fontWeight: 700 }}>{ticket.subject}</h2>
+        {editing ? (
+          <div style={{ display: "grid", gap: 10, margin: "4px 0 16px" }}>
+            <Field label="Subject">
+              <input
+                style={inputStyle} maxLength={300} value={draft.subject}
+                onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+              />
+            </Field>
+            <Field label="Requester">
+              <input
+                style={inputStyle} maxLength={200} value={draft.requester}
+                onChange={(e) => setDraft({ ...draft, requester: e.target.value })}
+              />
+            </Field>
+            <Field label="Description">
+              <textarea
+                style={{ ...inputStyle, minHeight: 110, resize: "vertical" }}
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              />
+            </Field>
+            <div>
+              <button
+                onClick={saveEdit}
+                disabled={!draft.subject.trim()}
+                style={{
+                  background: "#0E7C66", color: "#fff", border: "none", borderRadius: 6,
+                  padding: "8px 16px", fontSize: 13, fontWeight: 600,
+                  cursor: draft.subject.trim() ? "pointer" : "not-allowed",
+                  opacity: draft.subject.trim() ? 1 : 0.55,
+                }}
+              >
+                Save changes
+              </button>
+            </div>
+          </div>
+        ) : (
+          <h2 style={{ margin: "0 0 10px", fontSize: 19, fontWeight: 700 }}>{ticket.subject}</h2>
+        )}
 
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--text-soft)", marginBottom: 14 }}>
           <PriorityDot priority={ticket.priority} />
@@ -952,7 +1020,7 @@ function TicketDetail({ ticket, onUpdate, onDelete, technicians, embedded, onClo
           )}
         </div>
 
-        {ticket.description && (
+        {!editing && ticket.description && (
           <p style={{
             fontSize: 14, lineHeight: 1.55, color: "var(--text)", background: "var(--well)",
             padding: "12px 14px", borderRadius: 8, whiteSpace: "pre-wrap", margin: "0 0 16px",
