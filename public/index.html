@@ -42,6 +42,10 @@
     --st-open-bg: #EAF3FB;  --st-open-fg: #1F5C8B;
     --st-prog-bg: #FDF3E3;  --st-prog-fg: #9A6008;
     --st-hold-bg: #F0EDF7;  --st-hold-fg: #5B4A8A;
+    --st-dev-bg: #E3F2FB;   --st-dev-fg: #0B6E8F;
+    --st-qa-bg: #FBEAF3;    --st-qa-fg: #A03A6B;
+    --st-uat-bg: #EAF6E7;   --st-uat-fg: #2E7D32;
+    --st-rdy-bg: #ECEFFB;   --st-rdy-fg: #3A4AA3;
     --st-res-bg: #E7F4EF;   --st-res-fg: #0E7C66;
   }
   [data-theme="dark"] {
@@ -68,6 +72,10 @@
     --st-open-bg: #14324A;  --st-open-fg: #7FB8E8;
     --st-prog-bg: #3A2E12;  --st-prog-fg: #E0B25E;
     --st-hold-bg: #2A2440;  --st-hold-fg: #B3A4E0;
+    --st-dev-bg: #0F2E3D;   --st-dev-fg: #6FCDEB;
+    --st-qa-bg: #3A1F2E;    --st-qa-fg: #E48FB9;
+    --st-uat-bg: #1E3320;   --st-uat-fg: #8FD694;
+    --st-rdy-bg: #1C2340;   --st-rdy-fg: #9AA8F0;
     --st-res-bg: #123329;   --st-res-fg: #5CC7A8;
   }
   body {
@@ -216,7 +224,8 @@ const { useState, useEffect, useMemo } = React;
 const CATEGORIES = ["Hardware", "Software", "Network", "Accounts & Access", "Email / M365", "Printing", "Other"];
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
 const SLA_HOURS = { Critical: 4, High: 24, Medium: 72, Low: 120 }; // resolution targets
-const STATUSES = ["Open", "In Progress", "On Hold", "Resolved"];
+const SLA_ENABLED = false; // TESTING: SLA timers & overdue flags paused. Set true to resume; clocks pick up from ticket createdAt.
+const STATUSES = ["Open", "In Progress", "On Hold", "In Development", "In QA", "UAT", "Ready for Deployment", "Resolved"];
 const REQUEST_TYPES = ["Incident", "Service Request", "Question", "Change"];
 const REQUEST_TYPE_EDGE = { Incident: "var(--alarm-strong)", "Service Request": "#2980B9" };
 const SUBCATS = {
@@ -240,11 +249,29 @@ const STATUS_STYLE = {
   Open: { bg: "var(--st-open-bg)", fg: "var(--st-open-fg)" },
   "In Progress": { bg: "var(--st-prog-bg)", fg: "var(--st-prog-fg)" },
   "On Hold": { bg: "var(--st-hold-bg)", fg: "var(--st-hold-fg)" },
+  "In Development": { bg: "var(--st-dev-bg)", fg: "var(--st-dev-fg)" },
+  "In QA": { bg: "var(--st-qa-bg)", fg: "var(--st-qa-fg)" },
+  UAT: { bg: "var(--st-uat-bg)", fg: "var(--st-uat-fg)" },
+  "Ready for Deployment": { bg: "var(--st-rdy-bg)", fg: "var(--st-rdy-fg)" },
   Resolved: { bg: "var(--st-res-bg)", fg: "var(--st-res-fg)" },
 };
 
 const mono = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 const sans = "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
+// Default status-tab layout: every status visible, Overdue hidden by default.
+const DEFAULT_TABS = [...STATUSES.map((s) => ({ key: s, on: true })), { key: "Overdue", on: false }];
+
+// Merge saved prefs with the current status list, so statuses added after an
+// engineer saved their layout still show up (new ones default to visible).
+function mergeTabPrefs(saved) {
+  const all = [...STATUSES, "Overdue"];
+  const merged = saved.filter((t) => t && all.includes(t.key)).map((t) => ({ key: t.key, on: !!t.on }));
+  all.forEach((k) => {
+    if (!merged.some((t) => t.key === k)) merged.push({ key: k, on: k !== "Overdue" });
+  });
+  return merged;
+}
 
 // ---------- API layer ----------
 async function api(path, options) {
@@ -263,16 +290,19 @@ function dueAt(t) {
 }
 
 function isOverdue(t) {
+  if (!SLA_ENABLED) return false;
   return t.status !== "Resolved" && Date.now() > dueAt(t).getTime();
 }
 
 function isDueSoon(t) {
+  if (!SLA_ENABLED) return false;
   if (t.status === "Resolved") return false;
   const remaining = dueAt(t).getTime() - Date.now();
   return remaining > 0 && remaining <= 4 * 3600000; // due within 4 hours
 }
 
 function dueLabel(t) {
+  if (!SLA_ENABLED) return null;
   if (t.status === "Resolved") return null;
   const diff = dueAt(t).getTime() - Date.now();
   const abs = Math.abs(diff);
@@ -364,6 +394,29 @@ function HelpdeskApp() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("td-theme", theme);
   }, [darkMode]);
+
+  // per-engineer status tab layout (order + visibility)
+  const [tabPrefs, setTabPrefs] = useState(DEFAULT_TABS);
+  const [tabsOpen, setTabsOpen] = useState(false);
+
+  useEffect(() => {
+    api("/api/prefs/tabs")
+      .then((d) => {
+        if (Array.isArray(d.tabs) && d.tabs.length) setTabPrefs(mergeTabPrefs(d.tabs));
+      })
+      .catch(() => {}); // no saved layout yet, or endpoint unreachable — defaults are fine
+  }, []);
+
+  async function saveTabPrefs(next) {
+    setTabPrefs(next);
+    setTabsOpen(false);
+    try {
+      await api("/api/prefs/tabs", { method: "PUT", body: JSON.stringify({ tabs: next }) });
+      setApiError("");
+    } catch (e) {
+      setApiError("Couldn't save your tab layout — " + e.message);
+    }
+  }
 
   async function loadState(silent) {
     if (!silent) setLoading(true);
@@ -463,7 +516,8 @@ function HelpdeskApp() {
   }
 
   const counts = useMemo(() => {
-    const c = { Open: 0, "In Progress": 0, "On Hold": 0, Resolved: 0 };
+    const c = {};
+    STATUSES.forEach((s) => { c[s] = 0; });
     tickets.forEach((t) => { c[t.status] = (c[t.status] || 0) + 1; });
     return c;
   }, [tickets]);
@@ -521,6 +575,36 @@ function HelpdeskApp() {
               ← Queue
             </button>
           )}
+          <button
+            onClick={() => { setView("new"); setSelectedId(null); }}
+            title="Create a new ticket"
+            style={{
+              background: "#0E7C66", color: "#F6F8F9", border: "1px solid #0E7C66",
+              borderRadius: 6, padding: "7px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            + New ticket
+          </button>
+          <button
+            onClick={() => setDarkMode((d) => !d)}
+            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            style={{
+              background: "transparent", color: "#F6F8F9", border: "1px solid #3D4C59",
+              borderRadius: 6, padding: "7px 12px", fontSize: 14, cursor: "pointer", lineHeight: 1,
+            }}
+          >
+            {darkMode ? "\u2600" : "\u263E"}
+          </button>
+          <button
+            onClick={() => loadState(true)}
+            title="Refresh queue"
+            style={{
+              background: "transparent", color: "#F6F8F9", border: "1px solid #3D4C59",
+              borderRadius: 6, padding: "7px 12px", fontSize: 14, cursor: "pointer", lineHeight: 1,
+            }}
+          >
+            {"\u21BB"}
+          </button>
           <div style={{ position: "relative" }}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
@@ -546,11 +630,9 @@ function HelpdeskApp() {
                   minWidth: 190, overflow: "hidden", padding: "4px 0",
                 }}>
                   {[
-                    { label: "+ New ticket", strong: true, act: () => { setView("new"); setSelectedId(null); } },
                     { label: "Reports", act: () => { setView("reports"); setSelectedId(null); } },
                     { label: "Team", act: () => { setView("team"); setSelectedId(null); } },
-                    { label: "↻ Refresh", act: () => loadState(true) },
-                    { label: darkMode ? "☀ Light mode" : "☾ Dark mode", act: () => setDarkMode((d) => !d) },
+                    { label: "My status tabs\u2026", act: () => setTabsOpen(true) },
                   ].map((item) => (
                     <button
                       key={item.label}
@@ -580,39 +662,53 @@ function HelpdeskApp() {
         display: "flex", gap: 0, borderBottom: "1px solid var(--card-border)", background: "var(--card)",
         overflowX: "auto",
       }}>
-        {STATUSES.map((s) => (
-          <button
-            key={s}
-            onClick={() => { setStatusFilter(s === statusFilter ? "Active" : s); setView("list"); }}
-            style={{
-              flex: 1, minWidth: 110, padding: "12px 16px", background: statusFilter === s ? STATUS_STYLE[s].bg : "transparent",
-              border: "none", borderRight: "1px solid var(--border-soft)", cursor: "pointer", textAlign: "left",
-            }}
-          >
-            <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: STATUS_STYLE[s].fg }}>
-              {counts[s]}
-            </div>
-            <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "var(--text-mut)", textTransform: "uppercase" }}>
-              {s}
-            </div>
-          </button>
-        ))}
-        <button
-          onClick={() => { setStatusFilter(statusFilter === "Overdue" ? "Active" : "Overdue"); setView("list"); }}
-          style={{
-            flex: 1, minWidth: 110, padding: "12px 16px",
-            background: statusFilter === "Overdue" ? "var(--alarm-bg)" : "transparent",
-            border: "none", cursor: "pointer", textAlign: "left",
-          }}
-        >
-          <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: "var(--alarm-strong)" }}>
-            {overdueCount}
-          </div>
-          <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "var(--text-mut)", textTransform: "uppercase" }}>
-            Overdue
-          </div>
-        </button>
+        {tabPrefs.filter((t) => t.on).map((t) =>
+          t.key === "Overdue" ? (
+            <button
+              key="Overdue"
+              onClick={() => { setStatusFilter(statusFilter === "Overdue" ? "Active" : "Overdue"); setView("list"); }}
+              style={{
+                flex: 1, minWidth: 110, padding: "12px 16px",
+                background: statusFilter === "Overdue" ? "var(--alarm-bg)" : "transparent",
+                border: "none", borderRight: "1px solid var(--border-soft)", cursor: "pointer", textAlign: "left",
+              }}
+            >
+              <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: "var(--alarm-strong)" }}>
+                {overdueCount}
+              </div>
+              <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "var(--text-mut)", textTransform: "uppercase" }}>
+                Overdue
+              </div>
+            </button>
+          ) : (
+            <button
+              key={t.key}
+              onClick={() => { setStatusFilter(t.key === statusFilter ? "Active" : t.key); setView("list"); }}
+              style={{
+                flex: 1, minWidth: 110, padding: "12px 16px", background: statusFilter === t.key ? STATUS_STYLE[t.key].bg : "transparent",
+                border: "none", borderRight: "1px solid var(--border-soft)", cursor: "pointer", textAlign: "left",
+              }}
+            >
+              <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: STATUS_STYLE[t.key].fg }}>
+                {counts[t.key]}
+              </div>
+              <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 0.8, color: "var(--text-mut)", textTransform: "uppercase" }}>
+                {t.key}
+              </div>
+            </button>
+          )
+        )}
       </div>
+
+      {!SLA_ENABLED && (
+        <div style={{
+          background: "var(--st-prog-bg)", color: "var(--st-prog-fg)",
+          padding: "7px 22px", fontSize: 12, fontFamily: mono,
+          borderBottom: "1px solid var(--card-border)",
+        }}>
+          {"\u26A0"} SLA tracking disabled {"\u2014"} testing mode. Overdue counts and SLA timers are paused.
+        </div>
+      )}
 
       {apiError && (
         <div style={{
@@ -627,6 +723,10 @@ function HelpdeskApp() {
             Retry
           </button>
         </div>
+      )}
+
+      {tabsOpen && (
+        <TabSettings prefs={tabPrefs} onCancel={() => setTabsOpen(false)} onSave={saveTabPrefs} />
       )}
 
       <main
@@ -690,6 +790,104 @@ function HelpdeskApp() {
         )}
       </main>
     </div>
+  );
+}
+
+// ---------- per-engineer tab settings drawer ----------
+function TabSettings({ prefs, onCancel, onSave }) {
+  const [draft, setDraft] = useState(prefs.map((t) => ({ key: t.key, on: t.on })));
+  const [dragIdx, setDragIdx] = useState(null);
+  const atLeastOne = draft.some((t) => t.on);
+
+  function moveRow(from, to) {
+    if (from === to || from == null || to == null) return;
+    setDraft((d) => {
+      const next = d.slice();
+      const [row] = next.splice(from, 1);
+      next.splice(to, 0, row);
+      return next;
+    });
+  }
+
+  return (
+    <React.Fragment>
+      <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 190, background: "var(--shadow)" }} />
+      <div style={{
+        position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 200,
+        width: "min(380px, 92vw)", background: "var(--card)",
+        borderLeft: "1px solid var(--card-border)", boxShadow: "0 0 32px var(--shadow)",
+        padding: 22, overflowY: "auto",
+      }}>
+        <div style={{ fontFamily: mono, fontSize: 12, letterSpacing: 1.2, textTransform: "uppercase", color: "var(--text-mut)", marginBottom: 4 }}>
+          My status tabs
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-mut)", lineHeight: 1.5, marginBottom: 14 }}>
+          Drag to reorder. Untick to hide a tab from your queue strip. Saved to your profile {"\u2014"} follows you on any device.
+        </div>
+
+        {draft.map((t, i) => (
+          <div
+            key={t.key}
+            draggable
+            onDragStart={() => setDragIdx(i)}
+            onDragEnd={() => setDragIdx(null)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); moveRow(dragIdx, i); setDragIdx(null); }}
+            style={{
+              display: "flex", alignItems: "center", gap: 10,
+              background: "var(--well)", border: "1px solid var(--card-border)",
+              borderRadius: 6, padding: "9px 12px", marginBottom: 6,
+              cursor: "grab", opacity: dragIdx === i ? 0.4 : 1, userSelect: "none",
+            }}
+          >
+            <span style={{ color: "var(--text-faint)", fontSize: 13 }}>{"\u22EE\u22EE"}</span>
+            <input
+              type="checkbox"
+              checked={t.on}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setDraft((d) => d.map((row, j) => (j === i ? { key: row.key, on } : row)));
+              }}
+              style={{ width: 15, height: 15, cursor: "pointer" }}
+            />
+            <span style={{ flex: 1, fontSize: 13 }}>{t.key}</span>
+            {t.key === "Overdue" && (
+              <span style={{ fontSize: 10, color: "var(--text-faint)" }}>hidden by default</span>
+            )}
+          </div>
+        ))}
+
+        {!atLeastOne && (
+          <div style={{ fontSize: 12, color: "var(--alarm-strong)", margin: "8px 0" }}>
+            Keep at least one tab enabled.
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              background: "transparent", color: "var(--text-mut)", border: "1px solid var(--card-border)",
+              borderRadius: 6, padding: "8px 16px", fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => atLeastOne && onSave(draft)}
+            disabled={!atLeastOne}
+            style={{
+              background: "#0E7C66", color: "#F6F8F9", border: "1px solid #0E7C66",
+              borderRadius: 6, padding: "8px 16px", fontSize: 13, fontWeight: 700,
+              cursor: atLeastOne ? "pointer" : "not-allowed", opacity: atLeastOne ? 1 : 0.5,
+              fontFamily: "inherit",
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </React.Fragment>
   );
 }
 
