@@ -8,6 +8,8 @@
 //   POST   /api/tickets/:id/notes     -> add a manual work note
 //   POST   /api/technicians           -> add engineer { name }
 //   DELETE /api/technicians/:name     -> remove engineer
+//   GET    /api/prefs/tabs            -> per-engineer status tab layout (order + visibility)
+//   PUT    /api/prefs/tabs            -> save status tab layout
 //   POST   /api/triage                -> AI triage (requires ANTHROPIC_API_KEY secret)
 //   everything else                   -> static assets from public/
 //
@@ -15,7 +17,7 @@
 
 const CATEGORIES = ["Hardware", "Software", "Network", "Accounts & Access", "Email / M365", "Printing", "Other"];
 const PRIORITIES = ["Critical", "High", "Medium", "Low"];
-const STATUSES = ["Open", "In Progress", "On Hold", "Resolved"];
+const STATUSES = ["Open", "In Progress", "On Hold", "In Development", "In QA", "UAT", "Ready for Deployment", "Resolved"];
 const REQUEST_TYPES = ["Incident", "Service Request", "Question", "Change"];
 
 const json = (data, status = 200) =>
@@ -249,6 +251,37 @@ export default {
           }
           const tickets = (tRes.results || []).map((r) => rowToTicket(r, byTicket[r.id]));
           return json({ tickets, technicians: await listTechnicians(env) });
+        }
+
+        // ---------- per-engineer status tab layout ----------
+        if (path === "/api/prefs/tabs" && (method === "GET" || method === "PUT")) {
+          const userEmail =
+            request.headers.get("Cf-Access-Authenticated-User-Email") || "local-dev";
+          if (method === "GET") {
+            const row = await env.DB.prepare(
+              "SELECT tabs_json FROM user_tab_prefs WHERE user_email = ?"
+            ).bind(userEmail).first();
+            let tabs = null;
+            if (row) {
+              try { tabs = JSON.parse(row.tabs_json); } catch { tabs = null; }
+            }
+            return json({ tabs });
+          }
+          const b = await request.json();
+          const tabs = Array.isArray(b.tabs) ? b.tabs : null;
+          const validKeys = [...STATUSES, "Overdue"];
+          const ok =
+            tabs && tabs.length &&
+            tabs.some((t) => t && t.on) &&
+            tabs.every((t) => t && validKeys.includes(t.key) && typeof t.on === "boolean");
+          if (!ok) {
+            return json({ error: "tabs must be a non-empty array of { key, on } with at least one enabled" }, 400);
+          }
+          await env.DB.prepare(
+            "INSERT INTO user_tab_prefs (user_email, tabs_json, updated_at) VALUES (?, ?, ?) " +
+            "ON CONFLICT(user_email) DO UPDATE SET tabs_json = excluded.tabs_json, updated_at = excluded.updated_at"
+          ).bind(userEmail, JSON.stringify(tabs), new Date().toISOString()).run();
+          return json({ ok: true, tabs });
         }
 
         // ---------- create ticket ----------
