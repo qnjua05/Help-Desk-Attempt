@@ -1,0 +1,19 @@
+{
+  "routes": [
+    { "route": "/api/email/inbound", "allowedRoles": ["anonymous"] },
+    { "route": "/.auth/login/github", "statusCode": 404 },
+    { "route": "/.auth/login/twitter", "statusCode": 404 },
+    { "route": "/login", "rewrite": "/.auth/login/aad" },
+    { "route": "/logout", "redirect": "/.auth/logout" },
+    { "route": "/*", "allowedRoles": ["helpdesk"] }
+  ],
+  "responseOverrides": {
+    "401": { "redirect": "/.auth/login/aad?post_login_redirect_uri=.referrer", "statusCode": 302 },
+    "403": { "rewrite": "/403.html", "statusCode": 403 }
+  },
+  "platform": { "apiRuntime": "node:20" },
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin"
+  }
+}
